@@ -67,11 +67,9 @@ def carregar_dados():
             return None
     return dfs
 
-# SUBSTITUA A ANTIGA FUNÇÃO POR ESTA VERSÃO MELHORADA
-
-# SUBSTITUA A ANTIGA FUNÇÃO POR ESTA VERSÃO MELHORADA
-
-# SUBSTITUA A ANTIGA FUNÇÃO POR ESTA VERSÃO TOTALMENTE INTERATIVA
+####################
+#
+####################
 
 def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_geral, eventos_selecionados):
     """Gera todos os elementos da aba 'Visão Geral' com gráficos interativos."""
@@ -235,7 +233,7 @@ st.markdown('---')
 
 # --- 6. ABAS PRINCIPAIS ---
 if dados:
-    tab1, tab2, tab3 = st.tabs(["Visão Geral", "Análise por Cargo", "Análise por Secretaria"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Visão Geral", "Análise por Cargo", "Análise por Secretaria", "Assistentes de IA"])
 
     # --- TAB 1: VISÃO GERAL ---
     with tab1:
@@ -372,3 +370,7 @@ if dados:
             barmode='group'
         )
         st.plotly_chart(fig_balanco_secretaria, use_container_width=True)
+
+    with tab4:
+        from app_ia import *
+        construir_pagina_ia()
