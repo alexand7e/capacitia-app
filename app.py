@@ -72,7 +72,7 @@ def carregar_dados():
 ####################
 
 def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_geral, eventos_selecionados):
-    """Gera todos os elementos da aba 'Visão Geral' com gráficos interativos."""
+    """Gera todos os elementos da aba 'Visão Geral' com gráficos interativos e taxa de permanência."""
     
     # Seção de KPIs e texto introdutório (sem alterações)
     # ... (o código dos cards e do texto markdown permanece o mesmo) ...
@@ -84,16 +84,32 @@ def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_
     # --- SEÇÃO DE GRÁFICOS TOTALMENTE INTERATIVA ---
     st.subheader("Análise Comparativa: Secretarias e Cargos")
 
-    # O seletor de visualização agora controla os dois gráficos abaixo
+    # MODIFICADO: Adicionada a opção 'Taxa de Permanência'
     visao_geral = st.radio(
         "Visualizar por:",
-        options=['Inscritos', 'Certificados', 'Comparativo'],
+        options=['Inscritos', 'Certificados', 'Taxa de Permanência', 'Comparativo'],
         horizontal=True,
         label_visibility="collapsed"
     )
 
-    # Prepara o dataframe de secretarias para a nova visualização
+    # --- Prepara os dataframes com a nova métrica ---
+
+    # NOVO: Define um nome de coluna padrão para a taxa de permanência
+    taxa_permanencia_col_name = 'Taxa de Permanência (%)'
+
+    # Prepara o dataframe de secretarias com a taxa
     df_comparativo_secretaria = df_secretarias_geral.groupby('SECRETARIA/ÓRGÃO')[['Nº INSCRITOS', 'Nº CERTIFICADOS']].sum()
+    # NOVO: Calcula a taxa de permanência, tratando a divisão por zero
+    df_comparativo_secretaria[taxa_permanencia_col_name] = (
+        df_comparativo_secretaria['Nº CERTIFICADOS'].div(df_comparativo_secretaria['Nº INSCRITOS']).fillna(0) * 100
+    )
+
+    # NOVO: Prepara o dataframe de cargos com a taxa
+    # (Assumindo que df_comparativo_cargo já tem 'Inscritos' e 'Certificados' somados)
+    df_comparativo_cargo[taxa_permanencia_col_name] = (
+        df_comparativo_cargo['Certificados'].div(df_comparativo_cargo['Inscritos']).fillna(0) * 100
+    )
+
 
     col_dist1, col_dist2 = st.columns(2)
 
@@ -110,6 +126,17 @@ def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_
             df_view_sec = df_comparativo_secretaria.nlargest(10, 'Nº CERTIFICADOS').sort_values(by='Nº CERTIFICADOS')
             fig_sec = px.bar(df_view_sec, x='Nº CERTIFICADOS', y=df_view_sec.index, orientation='h', title='Top 10 Secretarias por Nº de Certificados', text_auto=True)
             fig_sec.update_traces(marker_color='#06D6A0')
+
+        # NOVO: Bloco para visualizar a Taxa de Permanência
+        elif visao_geral == 'Taxa de Permanência':
+            df_view_sec = df_comparativo_secretaria.nlargest(10, taxa_permanencia_col_name).sort_values(by=taxa_permanencia_col_name)
+            fig_sec = px.bar(df_view_sec, x=taxa_permanencia_col_name, y=df_view_sec.index, orientation='h', title=f'Top 10 Secretarias por {taxa_permanencia_col_name}', text_auto=False)
+            fig_sec.update_traces(
+                marker_color='#118AB2', 
+                texttemplate='%{x:.2f}%', # Formata o texto da barra como porcentagem
+                textposition='outside'
+            )
+            fig_sec.update_xaxes(ticksuffix="%")
 
         elif visao_geral == 'Comparativo':
             df_view_sec = df_comparativo_secretaria.nlargest(10, 'Nº INSCRITOS')
@@ -128,7 +155,7 @@ def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_
         st.plotly_chart(fig_sec, use_container_width=True)
 
 
-    # --- BLOCO 2: GRÁFICO DE CARGO INTERATIVO (sem alterações na lógica) ---
+    # --- BLOCO 2 ATUALIZADO: GRÁFICO DE CARGO INTERATIVO ---
     with col_dist2:
         st.markdown("<p style='text-align: center;'>Análise de Desempenho por Cargo</p>", unsafe_allow_html=True)
         
@@ -141,6 +168,17 @@ def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_
             df_view_cargo = df_comparativo_cargo.nlargest(10, 'Certificados').sort_values(by='Certificados')
             fig_cargos = px.bar(df_view_cargo, x='Certificados', y=df_view_cargo.index, orientation='h', title='Top 10 Cargos por Nº de Certificados', text_auto=True)
             fig_cargos.update_traces(marker_color='#06D6A0')
+
+        # NOVO: Bloco para visualizar a Taxa de Permanência
+        elif visao_geral == 'Taxa de Permanência':
+            df_view_cargo = df_comparativo_cargo.nlargest(10, taxa_permanencia_col_name).sort_values(by=taxa_permanencia_col_name)
+            fig_cargos = px.bar(df_view_cargo, x=taxa_permanencia_col_name, y=df_view_cargo.index, orientation='h', title=f'Top 10 Cargos por {taxa_permanencia_col_name}', text_auto=False)
+            fig_cargos.update_traces(
+                marker_color='#118AB2', 
+                texttemplate='%{x:.2f}%', # Formata o texto da barra como porcentagem
+                textposition='outside'
+            )
+            fig_cargos.update_xaxes(ticksuffix="%")
 
         elif visao_geral == 'Comparativo':
             df_view_cargo = df_comparativo_cargo.nlargest(10, 'Inscritos')
@@ -160,13 +198,25 @@ def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_
 
     st.markdown("---")
 
-    # 4. Funil de Conversão (mantido)
-    st.subheader("Funil de Conversão Consolidado do Programa")
-    total_inscritos_geral = df_secretarias_geral['Nº INSCRITOS'].sum()
-    total_certificados_geral = df_secretarias_geral['Nº CERTIFICADOS'].sum()
-    fig_funil = px.funnel(x=[total_inscritos_geral, total_certificados_geral], y=['Inscritos', 'Certificados'], title="")
-    st.plotly_chart(fig_funil, use_container_width=True)
+    # MODIFICADO: Funil de Conversão agora usa o df_filtrado para ser dinâmico
+    st.subheader("Funil de Conversão (Baseado nos Filtros Aplicados)")
+    total_inscritos_filtrado = df_filtrado['Nº INSCRITOS'].sum()
+    total_certificados_filtrado = df_filtrado['Nº CERTIFICADOS'].sum()
     
+    # Adiciona uma verificação para evitar erro se não houver dados
+    if total_inscritos_filtrado > 0:
+        taxa_conversao = (total_certificados_filtrado / total_inscritos_filtrado) * 100
+        titulo_funil = f"Taxa de Conversão: {taxa_conversao:.2f}%"
+    else:
+        titulo_funil = "Sem dados para a seleção atual"
+
+    fig_funil = px.funnel(
+        x=[total_inscritos_filtrado, total_certificados_filtrado], 
+        y=['Inscritos', 'Certificados'], 
+        title=titulo_funil
+    )
+    fig_funil.update_layout(title_x=0.5)
+    st.plotly_chart(fig_funil, use_container_width=True)
 
 dados = carregar_dados()
 
