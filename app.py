@@ -75,7 +75,6 @@ def construir_aba_visao_geral(df_filtrado, df_comparativo_cargo, df_secretarias_
     """Gera todos os elementos da aba 'Visão Geral' com gráficos interativos e taxa de permanência."""
     
     # Seção de KPIs e texto introdutório (sem alterações)
-    # ... (o código dos cards e do texto markdown permanece o mesmo) ...
     st.markdown("> ℹ️ **Bem-vindo ao Dashboard de Análise!** Use os filtros à esquerda para explorar os indicadores. Os cartões e gráficos são atualizados automaticamente.")
     st.markdown("---")
     # (código dos 8 cards omitido para brevidade, mas deve ser mantido no seu arquivo)
