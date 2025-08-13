@@ -1,88 +1,86 @@
-import streamlit as st
+import re
+from datetime import datetime
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
 import plotly.io as pio
-import plotly.graph_objects as go
-from datetime import datetime
-from pathlib import Path
+import streamlit as st
 
 # =========================
 # CONFIG & THEME
 # =========================
-st.set_page_config(page_title="Dashboard CapacitIA", page_icon="🚀", layout="wide")
+st.set_page_config(
+    page_title="Dashboard CapacitIA",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="collapsed",  # colapsa por padrão
+)
 
 # Plotly theme
 pio.templates["capacit_dark"] = pio.templates["plotly_dark"]
 pio.templates["capacit_dark"].layout.font.family = "Inter, Segoe UI, Roboto, Arial"
-pio.templates["capacit_dark"].layout.colorway = ["#7DD3FC","#34D399","#FBBF24","#F472B6","#60A5FA","#A78BFA","#F87171"]
+pio.templates["capacit_dark"].layout.colorway = [
+    "#7DD3FC", "#34D399", "#FBBF24", "#F472B6", "#60A5FA", "#A78BFA", "#F87171"
+]
 pio.templates["capacit_dark"].layout.paper_bgcolor = "#0f1220"
 pio.templates["capacit_dark"].layout.plot_bgcolor = "#11142a"
-pio.templates["capacit_dark"].layout.hoverlabel = dict(bgcolor="#0f1220", font_size=12, font_family="Inter, Segoe UI, Roboto, Arial")
+pio.templates["capacit_dark"].layout.hoverlabel = dict(
+    bgcolor="#0f1220", font_size=12, font_family="Inter, Segoe UI, Roboto, Arial"
+)
 pio.templates.default = "capacit_dark"
 
-# Global CSS (AJUSTE DO CABEÇALHO E TÍTULO)
+# =========================
+# CSS GLOBAL (inclui esconder sidebar)
+# =========================
 st.markdown("""
 <style>
 :root{
   --bg:#0f1220; --panel:#11142a; --muted:#7780a1; --text:#e6e7ee; --accent:#7DD3FC; --accent2:#34D399;
-  --safe-top: 18px;            /* espaço de segurança no topo */
 }
-
-/* Fundo e sidebar */
 html, body, [data-testid="stAppViewContainer"] { background: var(--bg); color: var(--text) !important; }
-[data-testid="stSidebar"] { background: #0d1020; border-right:1px solid #1e2443; }
 
-/* AUMENTA o padding superior do conteúdo (evita cortar o herói) */
-[data-testid="stAppViewContainer"] .main .block-container { padding-top: var(--safe-top) !important; }
+/* 🔒 Esconde completamente a sidebar e o botão hambúrguer */
+[data-testid="stSidebar"], [data-testid="stSidebarNav"], section[data-testid="stSidebar"]{ display:none !important; }
+header [data-testid="stToolbar"]{ visibility:hidden; }
 
-/* Header nativo transparente (sem sobrepor o conteúdo) */
-header[data-testid="stHeader"] { background: transparent; }
+/* ⬇️ Dá espaço no topo para o título não cortar */
+[data-testid="stAppViewContainer"] .main .block-container{
+  padding-top: 72px !important;
+}
 
-/* Separador */
-.sep { border-top:1px solid #1e2443; margin:16px 0 12px 0; }
+/* Pequeno respiro extra no cartão do título */
+.hero { margin-top: 8px; }
 
-/* Card do título (hero) */
+/* Linha separadora */
+.sep{ border-top:1px solid #1e2443; margin:16px 0 12px 0; }
+
+/* Hero (título) */
 .hero {
-  background:
-    radial-gradient(1200px 400px at 10% -20%, rgba(125,211,252,.15), transparent),
-    radial-gradient(1000px 400px at 90% -30%, rgba(52,211,153,.12), transparent),
-    linear-gradient(180deg, #0f1220 0%, #0f1220 100%);
-  border:1px solid #1e2443;
-  border-radius:18px;
-  padding:22px 22px;           /* + padding = mais “respiro” pro título */
-  margin:6px 0 12px 0;         /* pequeno afastamento do topo */
+  background: radial-gradient(1200px 400px at 10% -20%, rgba(125,211,252,.15), transparent),
+              radial-gradient(1000px 400px at 90% -30%, rgba(52,211,153,.12), transparent),
+              linear-gradient(180deg, #0f1220 0%, #0f1220 100%);
+  border:1px solid #1e2443; border-radius:18px; padding:20px; margin-bottom:12px;
   box-shadow: 0 4px 24px rgba(0,0,0,.25);
-  overflow: visible;           /* garante que nada seja “cortado” */
 }
 
-/* Estilo do título principal dentro do hero */
-.hero .title {
-  font-weight: 800;
-  letter-spacing:.2px;
-  margin: 0;
-  line-height: 1.25;           /* evita corte */
-  font-size: clamp(1.6rem, 1.1rem + 1.2vw, 2.2rem);  /* tamanho fluido */
-  white-space: normal;         /* permite quebra */
-  word-break: break-word;      /* segurança pra telas estreitas */
-}
+/* KPI cards */
+.kpi{ background: var(--panel); border:1px solid #1e2443; border-radius:16px; padding:16px; }
+.kpi h4{ font-size:.85rem; font-weight:600; color:var(--muted); margin:0 0 6px 0; }
+.kpi .val{ font-size:1.6rem; font-weight:800; letter-spacing:.2px; }
 
-/* KPIs e painéis */
-.kpi { background: var(--panel); border:1px solid #1e2443; border-radius:16px; padding:16px; }
-.kpi h4 { font-size: .85rem; font-weight: 600; color: var(--muted); margin: 0 0 6px 0; }
-.kpi .val { font-size: 1.6rem; font-weight: 800; letter-spacing:.2px; }
+/* Painéis */
+.panel{ background: var(--panel); border:1px solid #1e2443; border-radius:18px; padding:14px; }
+.panel h3{ margin:0 0 6px 0; font-size:1.0rem; }
+.js-plotly-plot, .plot-container{ border-radius:12px; }
 
-.panel { background: var(--panel); border:1px solid #1e2443; border-radius:18px; padding:14px; }
-.panel h3 { margin: 0 0 6px 0; font-size:1.0rem; }
-
-.js-plotly-plot, .plot-container { border-radius:12px; }
-
-/* Ajustes responsivos */
-@media (max-width: 900px){
-  :root{ --safe-top: 22px; }   /* um pouco mais de espaço no topo no mobile */
-  .kpi .val{ font-size: 1.4rem; }
+/* (opcional) aumenta um pouco o respiro em telas menores */
+@media (max-width: 1200px){
+  [data-testid="stAppViewContainer"] .main .block-container{ padding-top: 84px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 # =========================
 # DATA LOAD
@@ -93,9 +91,9 @@ DEFAULT_XLSX = Path("dados") / "relatorio_capacitia.xlsx"
 def load_sheets(path: Path):
     xls = pd.ExcelFile(path)
     df_dados        = pd.read_excel(xls, "DADOS", header=6)
-    df_visao        = pd.read_excel(xls, "VISÃO ABERTA", header=6)  # Nº, EVENTO, Nº INSCRITOS, Nº CERTIFICADOS
-    df_secretarias  = pd.read_excel(xls, "SECRETARIA-ÓRGÃO", header=2)  # SECRETARIA/ÓRGÃO, Nº INSCRITOS, Nº CERTIFICADOS, Nº EVASÃO
-    df_cargos_raw   = pd.read_excel(xls, "CARGOS", header=2)  # eventos nas linhas; cargos nas colunas
+    df_visao        = pd.read_excel(xls, "VISÃO ABERTA", header=6)     # Nº, EVENTO, Nº INSCRITOS, Nº CERTIFICADOS
+    df_secretarias  = pd.read_excel(xls, "SECRETARIA-ÓRGÃO", header=2) # SECRETARIA/ÓRGÃO, Nº INSCRITOS, Nº CERTIFICADOS, Nº EVASÃO
+    df_cargos_raw   = pd.read_excel(xls, "CARGOS", header=2)           # eventos nas linhas; cargos nas colunas
     try:
         df_min      = pd.read_excel(xls, "MINISTRANTECARGA HORÁRIA", header=1)
     except Exception:
@@ -126,24 +124,19 @@ def style_fig(fig, height=420):
     return fig
 
 def df_panel(df: pd.DataFrame, title: str, key: str, max_rows: int = 22, min_h: int = 260, max_h: int = 640):
-    """Renderiza um dataframe com altura proporcional ao número de linhas."""
     st.markdown(f'<div class="panel"><h3>{title}</h3>', unsafe_allow_html=True)
-    h = min(max(min_h, 60 + 28 * min(len(df), max_rows)), max_h)  # ~28px por linha
+    h = min(max(min_h, 60 + 28 * min(len(df), max_rows)), max_h)
     st.dataframe(df, use_container_width=True, height=h)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
-# SIDEBAR & KPIs
+# "FILTROS" OCULTOS (valores padrão)
 # =========================
-with st.sidebar:
-    st.header("⚙️ Filtros")
-    secre_opts = sorted(df_secretarias["SECRETARIA/ÓRGÃO"].astype(str).dropna().unique().tolist())
-    secre_sel = st.multiselect("Secretarias/Órgãos", options=secre_opts, default=secre_opts)
-    topn = st.slider("Top N (gráficos)", 5, 30, 10, 1)
-    if st.button("🔁 Resetar filtros"):
-        st.experimental_rerun()
+secre_opts = sorted(df_secretarias["SECRETARIA/ÓRGÃO"].astype(str).dropna().unique().tolist())
+secre_sel = secre_opts            # todas as secretarias
+topn = 10                         # top N para gráficos
 
-# filtro secretarias
+# filtro de dados por secretaria
 df_f = df_secretarias[df_secretarias["SECRETARIA/ÓRGÃO"].astype(str).isin(secre_sel)].copy()
 if "Nº EVASÃO" in df_f.columns:
     num_insc = pd.to_numeric(df_f["Nº INSCRITOS"], errors="coerce")
@@ -183,7 +176,7 @@ st.markdown(f"""
 <div class="hero">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
     <div>
-      <div class="title">🚀 Dashboard CapacitIA</div>
+      <div style="font-size:2.0rem;font-weight:800;letter-spacing:.3px;">🚀 Dashboard CapacitIA</div>
       <div style="color:#a6accd;">Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</div>
     </div>
   </div>
