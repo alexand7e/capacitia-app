@@ -9,7 +9,7 @@ from pathlib import Path
 # =========================
 # CONFIG & THEME
 # =========================
-st.set_page_config(page_title="Dashboard de Capacitações", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Dashboard CapacitIA", page_icon="🚀", layout="wide")
 
 # Plotly theme
 pio.templates["capacit_dark"] = pio.templates["plotly_dark"]
@@ -183,7 +183,7 @@ st.markdown(f"""
 <div class="hero">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
     <div>
-      <div class="title">🚀 Dashboard de Capacitações</div>
+      <div class="title">🚀 Dashboard CapacitIA</div>
       <div style="color:#a6accd;">Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</div>
     </div>
   </div>
