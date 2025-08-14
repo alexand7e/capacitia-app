@@ -143,11 +143,19 @@ if "Nº EVASÃO" in df_f.columns:
     num_evas = pd.to_numeric(df_f["Nº EVASÃO"], errors="coerce")
     df_f["Evasão (%)"] = (num_evas / num_insc.replace(0, pd.NA)) * 100
 
-# KPIs
-tot_insc = int(df_f["Nº INSCRITOS"].sum()) if "Nº INSCRITOS" in df_f else 0
-tot_cert = int(df_f["Nº CERTIFICADOS"].sum()) if "Nº CERTIFICADOS" in df_f else 0
+# # KPIs
+# tot_insc = int(df_f["Nº INSCRITOS"].sum()) if "Nº INSCRITOS" in df_f else 0
+# tot_cert = int(df_f["Nº CERTIFICADOS"].sum()) if "Nº CERTIFICADOS" in df_f else 0
+# taxa_cert = (tot_cert / tot_insc * 100) if tot_insc else 0.0
+# sec_atendidas = df_f["SECRETARIA/ÓRGÃO"].nunique()
+
+# KPIs (usar VISÃO ABERTA — totals consolidados por evento)
+tot_insc = int(pd.to_numeric(df_visao["Nº INSCRITOS"], errors="coerce").fillna(0).sum())
+tot_cert = int(pd.to_numeric(df_visao["Nº CERTIFICADOS"], errors="coerce").fillna(0).sum())
 taxa_cert = (tot_cert / tot_insc * 100) if tot_insc else 0.0
-sec_atendidas = df_f["SECRETARIA/ÓRGÃO"].nunique()
+
+# Secretarias atendidas continua pelo cadastro de secretarias
+sec_atendidas = df_secretarias["SECRETARIA/ÓRGÃO"].nunique()
 
 # =========================
 # PREP CARGOS
