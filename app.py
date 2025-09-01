@@ -249,6 +249,7 @@ def get_totais_visao(df_visao: pd.DataFrame):
     tot_insc = pd.to_numeric(df_visao[ins_col], errors="coerce").fillna(0).sum() if ins_col else 0
     tot_cert = pd.to_numeric(df_visao[cer_col], errors="coerce").fillna(0).sum() if cer_col else 0
     return int(round(tot_insc)), int(round(tot_cert))
+#
 
 def get_secretarias_atendidas(df_sec_view: pd.DataFrame) -> int:
     vals = pd.to_numeric(df_sec_view["Nº INSCRITOS"], errors="coerce").fillna(0)
