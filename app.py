@@ -130,6 +130,13 @@ def count_secretarias_unicas(df_secretarias_limpa: pd.DataFrame) -> int:
     org = org[org != ""]
     return int(org.nunique())
 
+def drop_empty_labels(df: pd.DataFrame, col: str):
+    s = df[col].astype(str)
+    mask = s.str.strip().ne("") & ~s.str.lower().isin(["nan", "none", "nat"])
+    return df.loc[mask].copy()
+
+
+
 # =========================
 # SECRETARIA-ÓRGÃO (limpeza + filtro oculto)
 # =========================
@@ -249,7 +256,7 @@ def get_totais_visao(df_visao: pd.DataFrame):
     tot_insc = pd.to_numeric(df_visao[ins_col], errors="coerce").fillna(0).sum() if ins_col else 0
     tot_cert = pd.to_numeric(df_visao[cer_col], errors="coerce").fillna(0).sum() if cer_col else 0
     return int(round(tot_insc)), int(round(tot_cert))
-#
+
 
 def get_secretarias_atendidas(df_sec_view: pd.DataFrame) -> int:
     vals = pd.to_numeric(df_sec_view["Nº INSCRITOS"], errors="coerce").fillna(0)
@@ -305,8 +312,14 @@ c4.markdown(f'<div class="kpi"><h4>Secretarias atendidas</h4><div class="val">{s
 st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
 
 # =========================
-# TABS
+# TABS (com remoção de NaN/±inf nos plots)
 # =========================
+
+def nz(df: pd.DataFrame, required_cols):
+    """Remove linhas com NaN/±inf nas colunas exigidas."""
+    clean = df.replace([np.inf, -np.inf], pd.NA)
+    return clean.dropna(subset=required_cols)
+
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Visão Geral", "👥 Cargos", "🏢 Secretarias", "📚 Eventos"])
 
 # --------- Visão Geral
@@ -315,10 +328,19 @@ with tab1:
 
     with colA:
         st.markdown('<div class="panel"><h3>Desempenho por Secretaria</h3>', unsafe_allow_html=True)
-        grp_sec = df_f.groupby("SECRETARIA/ÓRGÃO")[["Nº INSCRITOS", "Nº CERTIFICADOS"]].sum().sort_values("Nº INSCRITOS", ascending=False)
+
+# 🔧 remove linhas com SECRETARIA/ÓRGÃO vazio/NaN
+        base = drop_empty_labels(df_f, "SECRETARIA/ÓRGÃO")
+
+        grp_sec = (
+            base.groupby("SECRETARIA/ÓRGÃO")[["Nº INSCRITOS", "Nº CERTIFICADOS"]]
+                .sum()
+                .sort_values("Nº INSCRITOS", ascending=False)
+        )
         grp_sec["Taxa de Permanência (%)"] = (
             grp_sec["Nº CERTIFICADOS"] / grp_sec["Nº INSCRITOS"]
         ).replace([pd.NA, float("inf")], 0).fillna(0) * 100
+
 
         modo = st.radio(
             "Visualizar",
@@ -327,31 +349,50 @@ with tab1:
         )
 
         if modo == "Inscritos":
-            d = grp_sec.head(topn).sort_values("Nº INSCRITOS")
-            fig = px.bar(d, x="Nº INSCRITOS", y=d.index, orientation="h", title="Top por Inscritos")
-            x_max = max(1, d["Nº INSCRITOS"].max())
-            fig.update_traces(text=d["Nº INSCRITOS"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
-            fig.update_xaxes(range=[0, x_max * 1.15])
+            d = nz(grp_sec, ["Nº INSCRITOS"]).head(topn).sort_values("Nº INSCRITOS")
+            if d.empty:
+                st.info("Sem dados para plotar.")
+                fig = px.bar(pd.DataFrame({"Nº INSCRITOS": []}), x="Nº INSCRITOS", y=[])
+            else:
+                fig = px.bar(d, x="Nº INSCRITOS", y=d.index, orientation="h", title="Top por Inscritos")
+                x_max = max(1, d["Nº INSCRITOS"].max())
+                fig.update_traces(text=d["Nº INSCRITOS"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
+                fig.update_xaxes(range=[0, x_max * 1.15])
 
         elif modo == "Certificados":
-            d = grp_sec.sort_values("Nº CERTIFICADOS", ascending=False).head(topn).sort_values("Nº CERTIFICADOS")
-            fig = px.bar(d, x="Nº CERTIFICADOS", y=d.index, orientation="h", title="Top por Certificados")
-            x_max = max(1, d["Nº CERTIFICADOS"].max())
-            fig.update_traces(text=d["Nº CERTIFICADOS"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
-            fig.update_xaxes(range=[0, x_max * 1.15])
+            d = nz(grp_sec, ["Nº CERTIFICADOS"]).sort_values("Nº CERTIFICADOS", ascending=False) \
+                                               .head(topn).sort_values("Nº CERTIFICADOS")
+            if d.empty:
+                st.info("Sem dados para plotar.")
+                fig = px.bar(pd.DataFrame({"Nº CERTIFICADOS": []}), x="Nº CERTIFICADOS", y=[])
+            else:
+                fig = px.bar(d, x="Nº CERTIFICADOS", y=d.index, orientation="h", title="Top por Certificados")
+                x_max = max(1, d["Nº CERTIFICADOS"].max())
+                fig.update_traces(text=d["Nº CERTIFICADOS"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
+                fig.update_xaxes(range=[0, x_max * 1.15])
 
         elif modo == "Taxa de Permanência":
-            d = grp_sec[grp_sec["Nº INSCRITOS"] > 0].sort_values("Taxa de Permanência (%)", ascending=False).head(topn).sort_values("Taxa de Permanência (%)")
-            fig = px.bar(d, x="Taxa de Permanência (%)", y=d.index, orientation="h", title="Top por Permanência")
-            vals = d["Taxa de Permanência (%)"]
-            x_max = max(1, vals.max())
-            fig.update_traces(text=vals, texttemplate="%{x:.1f}%", textposition="outside", cliponaxis=False)
-            fig.update_xaxes(ticksuffix="%", range=[0, max(100, x_max) * 1.12])
+            base = grp_sec[grp_sec["Nº INSCRITOS"] > 0]
+            d = nz(base, ["Taxa de Permanência (%)"]).sort_values("Taxa de Permanência (%)", ascending=False) \
+                                                    .head(topn).sort_values("Taxa de Permanência (%)")
+            if d.empty:
+                st.info("Sem dados para plotar.")
+                fig = px.bar(pd.DataFrame({"Taxa de Permanência (%)": []}), x="Taxa de Permanência (%)", y=[])
+            else:
+                fig = px.bar(d, x="Taxa de Permanência (%)", y=d.index, orientation="h", title="Top por Permanência")
+                vals = d["Taxa de Permanência (%)"]
+                x_max = max(1, vals.max())
+                fig.update_traces(text=vals, texttemplate="%{x:.1f}%", textposition="outside", cliponaxis=False)
+                fig.update_xaxes(ticksuffix="%", range=[0, max(100, x_max) * 1.12])
 
         else:  # Comparativo
-            d = grp_sec.head(topn)
-            fig = px.bar(d, x=["Nº INSCRITOS", "Nº CERTIFICADOS"], y=d.index, orientation="h", barmode="group")
-            fig.update_traces(texttemplate="%{x}", textposition="outside", cliponaxis=False)
+            d = nz(grp_sec, ["Nº INSCRITOS", "Nº CERTIFICADOS"]).head(topn)
+            if d.empty:
+                st.info("Sem dados para plotar.")
+                fig = px.bar(pd.DataFrame(columns=["Nº INSCRITOS","Nº CERTIFICADOS"]), x=["Nº INSCRITOS","Nº CERTIFICADOS"], y=[])
+            else:
+                fig = px.bar(d, x=["Nº INSCRITOS", "Nº CERTIFICADOS"], y=d.index, orientation="h", barmode="group")
+                fig.update_traces(texttemplate="%{x}", textposition="outside", cliponaxis=False)
 
         st.plotly_chart(style_fig(fig), use_container_width=True, key=f"vg_sec_lbl_{modo}_{topn}")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -359,12 +400,16 @@ with tab1:
     with colB:
         st.markdown('<div class="panel"><h3>Desempenho por Cargo (Inscritos)</h3>', unsafe_allow_html=True)
         if not df_cargos_rank.empty:
-            d = df_cargos_rank.head(topn).sort_values("Inscritos")
-            fig2 = px.bar(d, x="Inscritos", y=d.index, orientation="h", title=f"Top {topn} Cargos por Inscritos")
-            x_max2 = max(1, d["Inscritos"].max())
-            fig2.update_traces(text=d["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
-            fig2.update_xaxes(range=[0, x_max2 * 1.15])
-            st.plotly_chart(style_fig(fig2), use_container_width=True, key=f"vg_cargo_top_lbl_{topn}")
+            df_cargos_rank2 = nz(df_cargos_rank, ["Inscritos"])
+            d = df_cargos_rank2.head(topn).sort_values("Inscritos")
+            if d.empty:
+                st.info("Sem dados para o ranking.")
+            else:
+                fig2 = px.bar(d, x="Inscritos", y=d.index, orientation="h", title=f"Top {topn} Cargos por Inscritos")
+                x_max2 = max(1, d["Inscritos"].max())
+                fig2.update_traces(text=d["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
+                fig2.update_xaxes(range=[0, x_max2 * 1.15])
+                st.plotly_chart(style_fig(fig2), use_container_width=True, key=f"vg_cargo_top_lbl_{topn}")
         else:
             st.info("Aba 'CARGOS' vazia ou inválida.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -373,8 +418,12 @@ with tab1:
     st.markdown('<div class="panel"><h3>Funil de Conversão</h3>', unsafe_allow_html=True)
     if tot_insc > 0:
         funil_df = pd.DataFrame({"Etapa": ["Inscritos", "Certificados"], "Total": [tot_insc, tot_cert]})
-        fig_funil = px.funnel(funil_df, x="Total", y="Etapa", title=None)
-        st.plotly_chart(style_fig(fig_funil, height=360), use_container_width=True, key="vg_funnel")
+        funil_df = nz(funil_df, ["Total"])
+        if funil_df.empty:
+            st.info("Sem dados para montar o funil.")
+        else:
+            fig_funil = px.funnel(funil_df, x="Total", y="Etapa", title=None)
+            st.plotly_chart(style_fig(fig_funil, height=360), use_container_width=True, key="vg_funnel")
     else:
         st.info("Sem dados para montar o funil.")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -392,66 +441,95 @@ with tab2:
 
     col1, col2 = st.columns([1.65, 1])
 
+    # Ranking
     with col1:
         if not df_rank_view.empty:
+            df_rank_view = nz(df_rank_view, ["Inscritos"])
             top_df = df_rank_view.head(topn).sort_values("Inscritos")
-            fig_rank = px.bar(top_df, x="Inscritos", y=top_df.index, orientation="h", title=f"Top {topn} Cargos por Inscritos")
-            x_max = max(1, top_df["Inscritos"].max())
-            fig_rank.update_traces(text=top_df["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
-            fig_rank.update_xaxes(range=[0, x_max * 1.15])
-            st.plotly_chart(style_fig(fig_rank, height=460), use_container_width=True, key=f"t2_cargos_rank_{topn}")
+            if top_df.empty:
+                st.info("Sem dados para o ranking.")
+            else:
+                fig_rank = px.bar(top_df, x="Inscritos", y=top_df.index, orientation="h", title=f"Top {topn} Cargos por Inscritos")
+                x_max = max(1, top_df["Inscritos"].max())
+                fig_rank.update_traces(text=top_df["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
+                fig_rank.update_xaxes(range=[0, x_max * 1.15])
+                st.plotly_chart(style_fig(fig_rank, height=460), use_container_width=True, key=f"t2_cargos_rank_{topn}")
         else:
             st.info("Sem dados para o ranking.")
 
+    # Donut
     with col2:
         if not df_rank_view.empty:
             top_part = df_rank_view.head(topn).reset_index()
-            top_part["%"] = top_part["Inscritos"] / top_part["Inscritos"].sum() * 100
-            fig_pie = px.pie(top_part, values="Inscritos", names="Cargo", hole=0.55)
-            fig_pie.update_traces(textinfo="percent", textposition="inside", insidetextorientation="radial")
-            fig_pie.update_layout(legend=dict(orientation="v", y=0.5, yanchor="middle", x=1.02))
-            st.plotly_chart(style_fig(fig_pie, height=460), use_container_width=True, key=f"t2_cargos_pie_{topn}")
+            top_part = nz(top_part, ["Inscritos"])
+            top_part = top_part[top_part["Inscritos"] > 0]
+            if top_part.empty:
+                st.info("Sem dados para o donut.")
+            else:
+                fig_pie = px.pie(top_part, values="Inscritos", names="Cargo", hole=0.55)
+                fig_pie.update_traces(textinfo="percent", textposition="inside", insidetextorientation="radial")
+                fig_pie.update_layout(legend=dict(orientation="v", y=0.5, yanchor="middle", x=1.02))
+                st.plotly_chart(style_fig(fig_pie, height=460), use_container_width=True, key=f"t2_cargos_pie_{topn}")
         else:
             st.info("Sem dados para o donut.")
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # Stacked por tipo
     st.markdown('<div class="panel"><h3>Inscritos por Cargo e Tipo de Evento</h3>', unsafe_allow_html=True)
     if not df_ev_view.empty:
-        df_tipo_view = df_ev_view.groupby("Tipo")[cargo_cols].sum().T
+        df_tipo_view = df_ev_view.groupby("Tipo")[cargo_cols].sum().T.replace([np.inf, -np.inf], 0).fillna(0)
         cols_presentes = [c for c in tipos_sel if c in df_tipo_view.columns]
         if cols_presentes:
             top_idx = df_rank_view.head(topn).index
-            stacked_df = df_tipo_view.loc[top_idx, cols_presentes].fillna(0)
+            stacked_df = df_tipo_view.loc[df_tipo_view.index.intersection(top_idx), cols_presentes]
             stacked_df = stacked_df.loc[stacked_df.sum(axis=1).sort_values().index]
-            fig_stacked = px.bar(stacked_df, x=cols_presentes, y=stacked_df.index, orientation="h", barmode="stack")
-            fig_stacked.update_traces(texttemplate="%{x:.0f}", textposition="inside", insidetextanchor="middle")
-            st.plotly_chart(style_fig(fig_stacked), use_container_width=True, key=f"t2_cargos_stacked_{topn}")
+            if stacked_df.empty:
+                st.info("Sem dados para o stacked.")
+            else:
+                fig_stacked = px.bar(stacked_df, x=cols_presentes, y=stacked_df.index, orientation="h", barmode="stack")
+                fig_stacked.update_traces(texttemplate="%{x:.0f}", textposition="inside", insidetextanchor="middle")
+                st.plotly_chart(style_fig(fig_stacked), use_container_width=True, key=f"t2_cargos_stacked_{topn}")
         else:
             st.info("Tipos selecionados não possuem dados.")
     else:
         st.info("Sem dados para o stacked.")
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # Série por evento
     st.markdown('<div class="panel"><h3>Evolução por Evento</h3>', unsafe_allow_html=True)
     if cargo_cols and not df_ev_view.empty:
         cargo_escolhido = st.selectbox("Escolha um cargo", cargo_cols, index=0, key="t2_cargo_series")
         serie = (df_ev_view[[EVENTO_COL, "Tipo", cargo_escolhido]]
                  .rename(columns={EVENTO_COL: "Evento", cargo_escolhido: "Inscritos"}))
-        fig_series = px.bar(serie, x="Evento", y="Inscritos", color="Tipo", barmode="group", title=None)
-        fig_series.update_layout(bargap=0.02, bargroupgap=0.02)
-        fig_series.update_traces(marker_line_width=0)
-        fig_series.update_xaxes(tickangle=-35)
-        st.plotly_chart(style_fig(fig_series, height=520), use_container_width=True, key=f"t2_cargos_series_{cargo_escolhido}")
+        serie = nz(serie, ["Inscritos"])
+        if serie.empty:
+            st.info("Sem dados para a série.")
+        else:
+            fig_series = px.bar(serie, x="Evento", y="Inscritos", color="Tipo", barmode="group", title=None)
+            fig_series.update_layout(bargap=0.02, bargroupgap=0.02)
+            fig_series.update_traces(marker_line_width=0)
+            fig_series.update_xaxes(tickangle=-35)
+            st.plotly_chart(style_fig(fig_series, height=520), use_container_width=True, key=f"t2_cargos_series_{cargo_escolhido}")
     else:
         st.info("Nenhuma coluna de cargo encontrada.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --------- Secretarias
 with tab3:
-    grp = df_f.groupby('SECRETARIA/ÓRGÃO')[['Nº INSCRITOS','Nº CERTIFICADOS']].sum().reset_index()
+    # 🔧 base sem labels vazios/NaN
+    df_f_clean = drop_empty_labels(df_f, "SECRETARIA/ÓRGÃO")
+
+    grp = (
+        df_f_clean.groupby('SECRETARIA/ÓRGÃO')[['Nº INSCRITOS','Nº CERTIFICADOS']]
+                .sum()
+                .reset_index()
+    )
+    grp = grp.replace([np.inf, -np.inf], pd.NA)
+    grp = nz(grp, ['Nº INSCRITOS','Nº CERTIFICADOS'])
     grp['Taxa de Certificação (%)'] = (
         grp['Nº CERTIFICADOS'] / grp['Nº INSCRITOS']
     ).replace([pd.NA, float('inf')], 0).fillna(0) * 100
+
 
     show_sec_table = st.toggle("Mostrar tabela de secretarias", value=False,
                                help="Ative para visualizar o consolidado; por padrão fica oculto.")
@@ -463,27 +541,39 @@ with tab3:
 
     with cA:
         top_comp = grp.sort_values('Nº INSCRITOS', ascending=False).head(topn)
-        fig_comp = px.bar(top_comp, x=['Nº INSCRITOS','Nº CERTIFICADOS'], y='SECRETARIA/ÓRGÃO',
-                          orientation='h', barmode='group', text_auto=True, title=None)
-        fig_comp.update_traces(textposition="outside", cliponaxis=False, textfont_size=12)
-        st.plotly_chart(style_fig(fig_comp), use_container_width=True, key=f"sec_comp_{topn}")
+        if top_comp.empty:
+            st.info("Sem dados para o comparativo.")
+        else:
+            fig_comp = px.bar(top_comp, x=['Nº INSCRITOS','Nº CERTIFICADOS'], y='SECRETARIA/ÓRGÃO',
+                              orientation='h', barmode='group', text_auto=True, title=None)
+            fig_comp.update_traces(textposition="outside", cliponaxis=False, textfont_size=12)
+            st.plotly_chart(style_fig(fig_comp), use_container_width=True, key=f"sec_comp_{topn}")
 
     with cB:
         top_taxa = grp[grp['Nº INSCRITOS'] > 0].sort_values('Taxa de Certificação (%)', ascending=False).head(topn)
-        fig_taxa = px.bar(top_taxa, x='Taxa de Certificação (%)', y='SECRETARIA/ÓRGÃO',
-                          orientation='h', title=f'Top {topn} por Taxa de Certificação', text='Taxa de Certificação (%)')
-        fig_taxa.update_traces(texttemplate='%{text:.0f}%', textposition='outside', cliponaxis=False, textfont_size=12)
-        fig_taxa.update_xaxes(ticksuffix="%")
-        st.plotly_chart(style_fig(fig_taxa), use_container_width=True, key=f"sec_taxa_top_{topn}")
+        top_taxa = nz(top_taxa, ['Taxa de Certificação (%)'])
+        if top_taxa.empty:
+            st.info("Sem dados para taxa.")
+        else:
+            fig_taxa = px.bar(top_taxa, x='Taxa de Certificação (%)', y='SECRETARIA/ÓRGÃO',
+                              orientation='h', title=f'Top {topn} por Taxa de Certificação',
+                              text='Taxa de Certificação (%)')
+            fig_taxa.update_traces(texttemplate='%{text:.0f}%', textposition='outside', cliponaxis=False, textfont_size=12)
+            fig_taxa.update_xaxes(ticksuffix="%")
+            st.plotly_chart(style_fig(fig_taxa), use_container_width=True, key=f"sec_taxa_top_{topn}")
 
     st.markdown('<div class="panel"><h3>Participação no total de Inscritos</h3>', unsafe_allow_html=True)
     grp_tree = grp.sort_values('Nº INSCRITOS', ascending=False).head(max(topn*2, 20))
-    treemap = px.treemap(grp_tree, path=['SECRETARIA/ÓRGÃO'], values='Nº INSCRITOS',
-                         color='Taxa de Certificação (%)', custom_data=['Taxa de Certificação (%)'],
-                         title='Treemap — maiores contribuições')
-    treemap.update_traces(texttemplate="<b>%{label}</b><br>%{customdata[0]:.0f}%", textposition="middle center")
-    treemap.update_layout(uniformtext_minsize=12, uniformtext_mode='show')
-    st.plotly_chart(style_fig(treemap, height=520), use_container_width=True, key="sec_tree")
+    grp_tree = nz(grp_tree, ['Nº INSCRITOS'])
+    if grp_tree.empty:
+        st.info("Sem dados para o treemap.")
+    else:
+        treemap = px.treemap(grp_tree, path=['SECRETARIA/ÓRGÃO'], values='Nº INSCRITOS',
+                             color='Taxa de Certificação (%)', custom_data=['Taxa de Certificação (%)'],
+                             title='Treemap — maiores contribuições')
+        treemap.update_traces(texttemplate="<b>%{label}</b><br>%{customdata[0]:.0f}%", textposition="middle center")
+        treemap.update_layout(uniformtext_minsize=12, uniformtext_mode='show')
+        st.plotly_chart(style_fig(treemap, height=520), use_container_width=True, key="sec_tree")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --------- Eventos
@@ -492,6 +582,11 @@ with tab4:
         st.info("Aba 'VISÃO ABERTA' vazia ou inválida.")
     else:
         ev = df_visao.copy()
+        # garantir numéricos e filtrar NaN/±inf
+        ev["Nº INSCRITOS"] = pd.to_numeric(ev["Nº INSCRITOS"], errors="coerce")
+        ev["Nº CERTIFICADOS"] = pd.to_numeric(ev["Nº CERTIFICADOS"], errors="coerce")
+        ev = nz(ev, ["Nº INSCRITOS", "Nº CERTIFICADOS"])
+
         ev["Tipo"] = (
             ev["EVENTO"].astype(str)
             .str.extract(r"(Masterclass|Workshop|Curso)", expand=False)
@@ -517,7 +612,7 @@ with tab4:
             cols_evento = [c for c in ["Nº","EVENTO","Tipo","Nº INSCRITOS","Nº CERTIFICADOS","Evasão (Nº)","Taxa de Certificação (%)"] if c in ev.columns]
             df_panel(ev[cols_evento].reset_index(drop=True), "Eventos (filtrados)", key=f"tbl_evt_{len(ev)}")
 
-        by_tipo = ev.groupby("Tipo")[["Nº INSCRITOS","Nº CERTIFICADOS"]].sum()
+        by_tipo = ev.groupby("Tipo")[["Nº INSCRITOS","Nº CERTIFICADOS"]].sum().replace([np.inf, -np.inf], 0).fillna(0)
         col_left, col_right = st.columns([1.2, 1])
 
         with col_left:
@@ -541,11 +636,15 @@ with tab4:
             by_tipo2 = by_tipo.reset_index().melt(id_vars="Tipo",
                                                   value_vars=["Nº INSCRITOS","Nº CERTIFICADOS"],
                                                   var_name="Métrica", value_name="Total")
-            bar_tipo = px.bar(by_tipo2, x="Tipo", y="Total", color="Métrica", barmode="group", title=None)
-            bar_tipo.update_traces(texttemplate="%{y}", textposition="outside", cliponaxis=False)
-            maxy = max(1, by_tipo2["Total"].max())
-            bar_tipo.update_yaxes(range=[0, maxy * 1.15])
-            st.plotly_chart(style_fig(bar_tipo, height=420), use_container_width=True, key="ev_bar_tipo")
+            by_tipo2 = nz(by_tipo2, ["Total"])
+            if by_tipo2.empty:
+                st.info("Sem dados para barras por tipo.")
+            else:
+                bar_tipo = px.bar(by_tipo2, x="Tipo", y="Total", color="Métrica", barmode="group", title=None)
+                bar_tipo.update_traces(texttemplate="%{y}", textposition="outside", cliponaxis=False)
+                maxy = max(1, by_tipo2["Total"].max())
+                bar_tipo.update_yaxes(range=[0, maxy * 1.15])
+                st.plotly_chart(style_fig(bar_tipo, height=420), use_container_width=True, key="ev_bar_tipo")
             st.markdown('</div>', unsafe_allow_html=True)
 
         if not ev.empty:
@@ -562,32 +661,34 @@ with tab4:
                 return " ".join(base.split()[:4])
 
             ev_tmp = ev.copy()
-            ev_tmp["EVENTO_LABEL"] = ev_tmp.apply(lambda r: rotulo_curto(r["EVENTO"], r["Tipo"]), axis=1)
-
-            col_tm, col_desc = st.columns([4, 1.7], gap="large")
-            with col_tm:
-                tmap = px.treemap(
-                    ev_tmp.sort_values("Nº INSCRITOS", ascending=False).head(max(topn*2, 20)),
-                    path=["Tipo", "EVENTO_LABEL"], values="Nº INSCRITOS", title=None
-                )
-                tmap.update_traces(
-                    textinfo="label+text",
-                    texttemplate="%{label}<br>%{percentRoot:.1%}",
-                    textposition="middle center",
-                    hovertemplate="<b>%{label}</b><br>Inscritos: %{value}<br>Participação: %{percentRoot:.1%}<extra></extra>",
-                )
-                st.plotly_chart(style_fig(tmap, height=520), use_container_width=True, key="ev_treemap_labels_pct")
-
-            with col_desc:
-                st.markdown("""
-                <div class="panel">
-                <h3>O que é essa porcentagem?</h3>
-                <p>É a <b>participação no total de inscritos</b> considerando todos os filtros atuais.</p>
-                <ul>
-                    <li><b>Tipo</b> (Curso de IA, Masterclass, Workshop): % do total para cada tipo.</li>
-                    <li><b>Evento</b> (ex.: <i>11° Curso</i>): % daquele evento no total.</li>
-                </ul>
-                <p>Passe o mouse para ver <b>inscritos absolutos</b> e a mesma participação (%).</p>
-                </div>
-                """, unsafe_allow_html=True)
+            ev_tmp = nz(ev_tmp, ["Nº INSCRITOS"])
+            if ev_tmp.empty:
+                st.info("Sem dados para o treemap.")
+            else:
+                ev_tmp["EVENTO_LABEL"] = ev_tmp.apply(lambda r: rotulo_curto(r["EVENTO"], r["Tipo"]), axis=1)
+                col_tm, col_desc = st.columns([4, 1.7], gap="large")
+                with col_tm:
+                    tmap = px.treemap(
+                        ev_tmp.sort_values("Nº INSCRITOS", ascending=False).head(max(topn*2, 20)),
+                        path=["Tipo", "EVENTO_LABEL"], values="Nº INSCRITOS", title=None
+                    )
+                    tmap.update_traces(
+                        textinfo="label+text",
+                        texttemplate="%{label}<br>%{percentRoot:.1%}",
+                        textposition="middle center",
+                        hovertemplate="<b>%{label}</b><br>Inscritos: %{value}<br>Participação: %{percentRoot:.1%}<extra></extra>",
+                    )
+                    st.plotly_chart(style_fig(tmap, height=520), use_container_width=True, key="ev_treemap_labels_pct")
+                with col_desc:
+                    st.markdown("""
+                    <div class="panel">
+                    <h3>O que é essa porcentagem?</h3>
+                    <p>É a <b>participação no total de inscritos</b> considerando todos os filtros atuais.</p>
+                    <ul>
+                        <li><b>Tipo</b> (Curso de IA, Masterclass, Workshop): % do total para cada tipo.</li>
+                        <li><b>Evento</b> (ex.: <i>11° Curso</i>): % daquele evento no total.</li>
+                    </ul>
+                    <p>Passe o mouse para ver <b>inscritos absolutos</b> e a mesma participação (%).</p>
+                    </div>
+                    """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
