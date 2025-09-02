@@ -116,19 +116,49 @@ def _col_like(df, *keywords):
             return c
     return None
 
-def _normalize_org(s):
-    if pd.isna(s): return ""
-    s = str(s).strip().upper()
-    s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))  # remove acento
-    s = re.sub(r"\s+", " ", s)  # colapsa espaços
+def _normalize_org(s: str) -> str:
+    s = "" if pd.isna(s) else str(s)
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))  # remove acentos
+    s = re.sub(r"\s+", " ", s).strip().upper()
     return s
 
-def count_secretarias_unicas(df_secretarias_limpa: pd.DataFrame) -> int:
-    # df_secretarias_limpa é o resultado da clean_secretarias(...)
+def count_secretarias_unicas(
+    df_secretarias: pd.DataFrame,
+    *,
+    only_with_inscritos: bool = True,     # conta só quem tem inscrito > 0 (KPI "atendidas")
+    drop_genericos: bool = True,          # remove rótulos genéricos
+    alias: dict | None = None             # mapa opcional para unificar nomes (ex.: {"INVESTE": "INVESTEPI"})
+) -> int:
+    df = df_secretarias.copy()
+
+    # Remove linhas-meta (se existirem)
+    mask_meta = df.astype(str).apply(
+        lambda s: s.str.upper().str.contains("TOTAL|ATIVIDADE/EVENTO", na=False)
+    ).any(axis=1)
+    df = df[~mask_meta]
+
+    # Filtro por inscritos > 0 (quando o KPI é "atendidas")
+    if only_with_inscritos and "Nº INSCRITOS" in df.columns:
+        insc = pd.to_numeric(df["Nº INSCRITOS"], errors="coerce").fillna(0)
+        df = df[insc > 0]
+
+    # Normaliza rótulos
     col = "SECRETARIA/ÓRGÃO"
-    org = df_secretarias_limpa[col].astype(str).map(_normalize_org)
-    org = org[org != ""]
-    return int(org.nunique())
+    s = df[col].map(_normalize_org)
+
+    # Remove vazios e placeholders
+    invalid = {"", "NAN", "NONE", "NAT"}
+    if drop_genericos:
+        invalid |= {"ORGAO EXTERNO"}   # adicione outros se quiser
+
+    s = s[~s.isin(invalid)]
+
+    # Aplica aliases (opcional) para unificar grafias
+    if alias:
+        s = s.replace(alias)
+
+    return int(s.nunique())
 
 def drop_empty_labels(df: pd.DataFrame, col: str):
     s = df[col].astype(str)
