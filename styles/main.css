@@ -1,0 +1,200 @@
+/* CapacitIA Dashboard - CSS Principal */
+
+/* =========================
+   VARIÁVEIS CSS
+   ========================= */
+:root {
+  --bg: #0f1220;
+  --panel: #11142a;
+  --muted: #7780a1;
+  --text: #e6e7ee;
+  --accent: #7DD3FC;
+  --accent2: #34D399;
+}
+
+/* =========================
+   RESET E BASE
+   ========================= */
+html, body, [data-testid="stAppViewContainer"] {
+  background: var(--bg);
+  color: var(--text) !important;
+}
+
+/* =========================
+   STREAMLIT CUSTOMIZATIONS
+   ========================= */
+/* Esconder sidebar */
+[data-testid="stSidebar"],
+[data-testid="stSidebarNav"],
+section[data-testid="stSidebar"] {
+  display: none !important;
+}
+
+/* Esconder toolbar */
+header [data-testid="stToolbar"] {
+  visibility: hidden;
+}
+
+/* Ajustar padding do container principal */
+[data-testid="stAppViewContainer"] .main .block-container {
+  padding-top: 72px !important;
+}
+
+/* =========================
+   COMPONENTES PRINCIPAIS
+   ========================= */
+
+/* Hero Section */
+.hero {
+  margin-top: 8px;
+  background: radial-gradient(1200px 400px at 10% -20%, rgba(125,211,252,.15), transparent),
+              radial-gradient(1000px 400px at 90% -30%, rgba(52,211,153,.12), transparent),
+              linear-gradient(180deg, #0f1220 0%, #0f1220 100%);
+  border: 1px solid #1e2443;
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.25);
+}
+
+/* Separador */
+.sep {
+  border-top: 1px solid #1e2443;
+  margin: 16px 0 12px 0;
+}
+
+/* KPI Cards */
+.kpi {
+  background: var(--panel);
+  border: 1px solid #1e2443;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.kpi h4 {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 6px 0;
+}
+
+.kpi .val {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+/* Panel Genérico */
+.panel {
+  background: var(--panel);
+  border: 1px solid #1e2443;
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.panel h3 {
+  margin: 0 0 6px 0;
+  font-size: 1.0rem;
+}
+
+/* =========================
+   GRÁFICOS PLOTLY
+   ========================= */
+.js-plotly-plot,
+.plot-container {
+  border-radius: 12px;
+}
+
+/* =========================
+   RESPONSIVIDADE
+   ========================= */
+@media (max-width: 1200px) {
+  [data-testid="stAppViewContainer"] .main .block-container {
+    padding-top: 84px !important;
+  }
+}
+
+/* =========================
+   RODAPÉ
+   ========================= */
+.footer {
+  background: var(--panel);
+  border: 1px solid #1e2443;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 40px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.footer .logo {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.footer .year {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* =========================
+   UTILITÁRIOS
+   ========================= */
+
+/* Flex utilities */
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.gap-12 {
+  gap: 12px;
+}
+
+/* Text utilities */
+.text-muted {
+  color: var(--muted);
+}
+
+.text-accent {
+  color: var(--accent);
+}
+
+.text-accent2 {
+  color: var(--accent2);
+}
+
+/* Spacing utilities */
+.mb-12 {
+  margin-bottom: 12px;
+}
+
+.mt-8 {
+  margin-top: 8px;
+}
+
+.p-16 {
+  padding: 16px;
+}
+
+.p-20 {
+  padding: 20px;
+}
