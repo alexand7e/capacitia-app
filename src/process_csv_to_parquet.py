@@ -66,9 +66,9 @@ class CapacitiaCSVProcessor:
         # Filtrar apenas registros válidos (com dados principais)
         df_dados = df[df['EVENTO'].notna() & (df['EVENTO'] != '')].copy()
         
-        # Padronizar nomes das colunas
+        # Padronizar nomes das colunas - CORREÇÃO: formato e orgao_externo estavam trocados
         df_dados.columns = [
-            'evento', 'formato', 'orgao_externo', 'eixo', 'local_realizacao',
+            'evento', 'orgao_externo', 'formato', 'eixo', 'local_realizacao',
             'nome', 'cargo', 'cargo_outros', 'orgao', 'orgao_outros',
             'vinculo', 'vinculo_outros', 'certificado', 'cargo_gestao', 'servidor_estado'
         ]
