@@ -4,7 +4,7 @@
 import streamlit as st
 import pandas as pd
 
-def aplicar_filtros_globais(df_dados, df_secretarias, df_cargos, df_visao):
+def aCplicar_filtros_globais(df_dados, df_secretarias, df_cargos, df_visao):
     """
     Função centralizada para aplicar filtros globais de forma consistente
     
