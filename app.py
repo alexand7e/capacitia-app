@@ -31,6 +31,7 @@ pio.templates["capacit_dark"].layout.hoverlabel = dict(
 )
 pio.templates.default = "capacit_dark"
 
+
 # =========================
 # CSS GLOBAL
 # =========================
@@ -45,8 +46,8 @@ st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
 # =========================
 # tenta achar automaticamente o arquivo (novo ou antigo)
 _CANDIDATES = [
-    Path("dados") / "RelatorioCapacitia_AtualizadoAgosto.xlsx",
-    Path("dados") / "relatorio_capacitia.xlsx",
+    Path(".data/processed") / "RelatorioCapacitia_AtualizadoAgosto.xlsx",
+    Path(".data/processed") / "relatorio_capacitia.xlsx",
     Path("RelatorioCapacitia_AtualizadoAgosto.xlsx"),
     Path("relatorio_capacitia.xlsx"),
 ]
@@ -709,7 +710,7 @@ def nz(df: pd.DataFrame, required_cols):
 # Definir variável global para identificar formato dos dados
 is_parquet = 'cargo' in df_cargos_raw.columns
 
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Visão Geral", "👥 Cargos", "🏢 Secretarias", "📚 Eventos"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Visão Geral", "👥 Cargos", "🏢 Secretarias", "📚 Eventos", "👨‍🏫 Professores"])
 
 # --------- Visão Geral
 with tab1:
@@ -1121,6 +1122,208 @@ with tab4:
                     </div>
                     """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+
+# =================================================
+# 🔒 NOVA ABA 5: Professores (Área Restrita)
+# =================================================
+with tab5:
+    st.markdown('<div class="panel"><h3>Área Restrita — Professores</h3>', unsafe_allow_html=True)
+
+    senha = st.text_input("Digite a senha para acessar os dados:", type="password")
+
+    if senha != "admin123":  
+        st.warning("🔒 Área restrita. Informe a senha correta para visualizar os dados.")
+    else:
+        st.success("✅ Acesso liberado!")
+
+        # -------------------------
+        # Função para processar CAPACITIA
+        # -------------------------
+        def process_capacitia(df, sheet_name):
+            dias_semana = ["Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira"]
+            df = df[dias_semana].copy()
+
+            registros = []
+            for dia in dias_semana:
+                col = df[dia].dropna().reset_index(drop=True)
+                # pares: data, professor
+                for i in range(0, len(col)-1, 2):
+                    try:
+                        data = pd.to_datetime(col[i], errors="coerce", dayfirst=True)
+                        prof = str(col[i+1]).strip()
+                        if pd.notna(data) and prof not in ["nan", "None", ""]:
+                            registros.append({
+                                "Professor": prof,
+                                "Data": data,
+                                "DiaSemana": dia,
+                                "Carga Horária": 4,  # cada aula = 4h
+                                "Ano": str(data.year),
+                                "Origem": sheet_name
+                            })
+                    except Exception:
+                        continue
+
+            return pd.DataFrame(registros)
+
+        # -------------------------
+        # Carregar Excel
+        # -------------------------
+        try:
+            excel_path = Path(".data/processed") / "Relatorio_Atualizado_Capacitia.xlsx"
+            all_sheets = pd.read_excel(excel_path, sheet_name=None)
+
+            df_list = []
+            for sheet, df in all_sheets.items():
+                if sheet in ["CAPACITIA ORGAOS REGULARES", "CAPACITIA EXTERNO"]:
+                    df_list.append(process_capacitia(df, sheet))
+                else:
+                    df = df.rename(columns={
+                        "Ministrantes": "Professor",
+                        "Professores": "Professor"
+                    })
+
+                    if "Professor" not in df.columns:
+                        continue
+
+                    turma_cols = [c for c in df.columns if str(c).lower().startswith("turma")]
+                    if turma_cols:
+                        df["Carga Horária"] = df[turma_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+
+                    if "Carga Horária" not in df.columns:
+                        continue
+
+                    df["Ano"] = "2024" if "2024" in sheet else ("2025" if "2025" in sheet else "Outro")
+                    df["Origem"] = sheet
+
+                    df_list.append(df[["Professor", "Carga Horária", "Ano"] + [c for c in df.columns if c in ["Data","Secretaria/Órgão"]]])
+
+            if df_list:
+                df_profs = pd.concat(df_list, ignore_index=True)
+            else:
+                df_profs = pd.DataFrame(columns=["Professor","Carga Horária","Ano","Data","DiaSemana","Origem"])
+
+        except Exception as e:
+            st.error(f"Erro ao carregar dados: {e}")
+            df_profs = pd.DataFrame(columns=["Professor","Carga Horária","Ano","Data","DiaSemana","Origem"])
+
+        # ========================
+        # GRÁFICOS
+        # ========================
+        if not df_profs.empty:
+
+            # -------------------------
+            # Filtro de Ano (para os 2 primeiros gráficos + Treemap)
+            # -------------------------
+            anos = df_profs["Ano"].dropna().unique().tolist()
+            ano_sel = st.selectbox("📅 Selecione o Ano:", anos)
+
+            df_filtro = df_profs[df_profs["Ano"] == ano_sel]
+
+            colA, colB = st.columns(2)
+
+            # 1. Barras — Carga Horária
+            with colA:
+                st.subheader(f"📊 Carga Horária Total por Professor — {ano_sel}")
+                carga = df_filtro.groupby("Professor")["Carga Horária"].sum().reset_index()
+                carga = carga.sort_values("Carga Horária", ascending=True)
+                fig_carga = px.bar(carga, x="Carga Horária", y="Professor", orientation="h")
+                fig_carga.update_traces(
+                    text=carga["Carga Horária"],
+                    texttemplate="%{x}",
+                    textposition="outside"
+                )
+                st.plotly_chart(style_fig(fig_carga, height=500), use_container_width=True)
+
+            # 2. Barras — Nº de Aulas
+            with colB:
+                st.subheader(f"📘 Número de Aulas por Professor — {ano_sel}")
+                aulas = df_filtro.copy()
+                aulas["Qtd Aulas"] = (aulas["Carga Horária"] / 4).round().astype(int)
+                aulas = aulas.groupby("Professor")["Qtd Aulas"].sum().reset_index()
+                aulas = aulas.sort_values("Qtd Aulas", ascending=True)
+                fig_aulas = px.bar(aulas, x="Qtd Aulas", y="Professor", orientation="h")
+                fig_aulas.update_traces(
+                    text=aulas["Qtd Aulas"],
+                    texttemplate="%{x}",
+                    textposition="outside"
+                )
+                st.plotly_chart(style_fig(fig_aulas, height=500), use_container_width=True)
+
+           # 3. Treemap
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.subheader(f"🌳 Distribuição da Carga Horária (Treemap) — {ano_sel}")
+
+            carga_tot = df_filtro.groupby("Professor")["Carga Horária"].sum().reset_index()
+
+            fig_tree = px.treemap(
+                carga_tot,
+                path=["Professor"],
+                values="Carga Horária",
+                color="Carga Horária",  # cores baseadas na carga
+                color_continuous_scale="Viridis"
+            )
+
+            fig_tree.update_traces(
+                textinfo="label+percent entry+value",
+                textfont_size=16
+            )
+
+            fig_tree.update_layout(
+                margin=dict(t=20, l=10, r=10, b=10),
+                coloraxis_colorbar=dict(
+                    title=dict(
+                        text="Carga Horária",
+                        font=dict(size=14)
+                    ),
+                    tickfont=dict(size=12)
+                )
+            )
+
+            st.plotly_chart(style_fig(fig_tree, height=500), use_container_width=True)
+
+            # 4. Distribuição por Dia da Semana
+            if "DiaSemana" in df_profs.columns:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.subheader("📅 Distribuição da Carga Horária por Dia da Semana")
+
+                # Filtro de professores
+                profs = df_profs["Professor"].dropna().unique().tolist()
+                profs_sel = st.multiselect("👩‍🏫 Selecione os Professores:", profs, default=profs)
+
+                df_semana = df_profs[df_profs["Professor"].isin(profs_sel)]
+
+                # Agrupa por dia da semana e professor
+                dist = df_semana.groupby(["DiaSemana", "Professor"])["Carga Horária"].sum().reset_index()
+
+                # Ordena os dias
+                ordem_dias = ["Segunda-Feira","Terça-Feira","Quarta-Feira","Quinta-Feira","Sexta-Feira"]
+                dist["DiaSemana"] = pd.Categorical(dist["DiaSemana"], categories=ordem_dias, ordered=True)
+                dist = dist.sort_values(["DiaSemana","Professor"])
+
+                # Gráfico
+                fig_dias = px.bar(
+                    dist,
+                    x="DiaSemana",
+                    y="Carga Horária",
+                    color="Professor",
+                    barmode="group",
+                    text="Carga Horária"
+                )
+
+                fig_dias.update_traces(
+                    texttemplate="%{y}",
+                    textposition="outside",
+                    textfont_size=18  # 🔥 valores bem maiores
+                )
+
+                st.plotly_chart(style_fig(fig_dias, height=500), use_container_width=True)
+
+            # -------------------------
+            # 📋 Tabela Detalhada com Expander
+            # -------------------------
+            with st.expander("📋 Mostrar/Ocultar Dados completos"):
+                st.dataframe(df_filtro, use_container_width=True)
+
 
 # =========================
 # RODAPÉ GLOBAL
