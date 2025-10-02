@@ -31,6 +31,7 @@ pio.templates["capacit_dark"].layout.hoverlabel = dict(
 )
 pio.templates.default = "capacit_dark"
 
+
 # =========================
 # CSS GLOBAL
 # =========================
