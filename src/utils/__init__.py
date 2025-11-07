@@ -1,0 +1,2 @@
+"""Utilitários do CapacitIA Dashboard."""
+

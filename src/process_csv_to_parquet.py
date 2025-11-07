@@ -76,6 +76,40 @@ class CapacitiaCSVProcessor:
         # Limpeza e padronização dos dados
         df_dados = df_dados.fillna('')
         
+        # Função auxiliar para unir colunas principais com "OUTROS"
+        def unir_colunas(principal, outros):
+            """Une coluna principal com coluna 'OUTROS', priorizando principal."""
+            # Se principal tem valor válido, usar principal
+            if pd.notna(principal) and principal not in ['', 'NA']:
+                return principal
+            # Se principal vazio mas outros tem valor válido, usar outros
+            elif pd.notna(outros) and outros not in ['', 'NA']:
+                return outros
+            # Caso contrário, retornar vazio
+            return ''
+        
+        # Unir colunas duplicadas: unir "OUTROS" nas colunas principais
+        # ÓRGÃO: unir 'orgao' e 'orgao_outros'
+        df_dados['orgao'] = df_dados.apply(
+            lambda row: unir_colunas(row['orgao'], row['orgao_outros']), axis=1
+        )
+        
+        # VÍNCULO: unir 'vinculo' e 'vinculo_outros'
+        df_dados['vinculo'] = df_dados.apply(
+            lambda row: unir_colunas(row['vinculo'], row['vinculo_outros']), axis=1
+        )
+        
+        # CARGO: unir 'cargo' e 'cargo_outros' (considerar 'Outro' como vazio)
+        df_dados['cargo'] = df_dados.apply(
+            lambda row: unir_colunas(
+                row['cargo'] if row['cargo'] != 'Outro' else '', 
+                row['cargo_outros']
+            ), axis=1
+        )
+        
+        # Remover colunas "OUTROS" já que foram unidas
+        df_dados = df_dados.drop(columns=['orgao_outros', 'vinculo_outros', 'cargo_outros'], errors='ignore')
+        
         # Converter colunas categóricas
         categorical_cols = ['formato', 'eixo', 'cargo', 'orgao', 'vinculo', 'certificado', 'cargo_gestao', 'servidor_estado']
         for col in categorical_cols:
@@ -126,11 +160,26 @@ class CapacitiaCSVProcessor:
         """Cria o DataFrame equivalente à planilha SECRETARIA-ÓRGÃO (header dinâmico)."""
         logger.info("Criando df_secretarias...")
         
-        # Filtrar dados válidos
-        df_clean = df[df['ÓRGÃO'].notna() & (df['ÓRGÃO'] != '')].copy()
+        # Função auxiliar para unir colunas principais com "OUTROS"
+        def unir_colunas(principal, outros):
+            """Une coluna principal com coluna 'OUTROS', priorizando principal."""
+            if pd.notna(principal) and principal not in ['', 'NA']:
+                return principal
+            elif pd.notna(outros) and outros not in ['', 'NA']:
+                return outros
+            return ''
         
-        # Agrupar por órgão
-        secretarias_data = df_clean.groupby('ÓRGÃO').agg({
+        # Primeiro, unir as colunas ÓRGÃO e ÓRGÃO OUTROS
+        df_temp = df.copy()
+        df_temp['ÓRGÃO_UNIDO'] = df_temp.apply(
+            lambda row: unir_colunas(row['ÓRGÃO'], row['ÓRGÃO OUTROS']), axis=1
+        )
+        
+        # Filtrar dados válidos usando a coluna unida
+        df_clean = df_temp[df_temp['ÓRGÃO_UNIDO'].notna() & (df_temp['ÓRGÃO_UNIDO'] != '')].copy()
+        
+        # Agrupar por órgão unido
+        secretarias_data = df_clean.groupby('ÓRGÃO_UNIDO').agg({
             'NOME': 'count',  # Total de inscritos
             'CERTIFICADO': lambda x: (x == 'Sim').sum()  # Total de certificados
         }).reset_index()
@@ -151,11 +200,37 @@ class CapacitiaCSVProcessor:
         """Cria o DataFrame equivalente à planilha CARGOS (header linha 2)."""
         logger.info("Criando df_cargos_raw...")
         
-        # Extrair dados de cargos
-        df_clean = df[df['CARGO'].notna() & (df['CARGO'] != '')].copy()
+        # Função auxiliar para unir colunas principais com "OUTROS"
+        def unir_colunas(principal, outros):
+            """Une coluna principal com coluna 'OUTROS', priorizando principal."""
+            if pd.notna(principal) and principal not in ['', 'NA']:
+                return principal
+            elif pd.notna(outros) and outros not in ['', 'NA']:
+                return outros
+            return ''
         
-        # Agrupar por cargo
-        cargos_data = df_clean.groupby(['CARGO', 'ÓRGÃO']).agg({
+        # Primeiro, precisamos unir as colunas duplicadas antes de agrupar
+        # Criar uma cópia temporária com colunas unidas
+        df_temp = df.copy()
+        
+        # Unir ÓRGÃO e ÓRGÃO OUTROS
+        df_temp['ÓRGÃO_UNIDO'] = df_temp.apply(
+            lambda row: unir_colunas(row['ÓRGÃO'], row['ÓRGÃO OUTROS']), axis=1
+        )
+        
+        # Unir CARGO e CARGO OUTROS (considerar 'Outro' como vazio)
+        df_temp['CARGO_UNIDO'] = df_temp.apply(
+            lambda row: unir_colunas(
+                row['CARGO'] if row['CARGO'] != 'Outro' else '', 
+                row['CARGO OUTROS']
+            ), axis=1
+        )
+        
+        # Extrair dados de cargos usando as colunas unidas
+        df_clean = df_temp[df_temp['CARGO_UNIDO'].notna() & (df_temp['CARGO_UNIDO'] != '')].copy()
+        
+        # Agrupar por cargo unido
+        cargos_data = df_clean.groupby(['CARGO_UNIDO', 'ÓRGÃO_UNIDO']).agg({
             'NOME': 'count',
             'CARGO DE GESTÃO': lambda x: (x == 'Sim').sum(),
             'SERVIDOR DO ESTADO': lambda x: (x == 'Sim').sum()
@@ -212,22 +287,213 @@ class CapacitiaCSVProcessor:
         df.to_parquet(filepath, index=False, engine='pyarrow')
         logger.info(f"Arquivo salvo: {filepath} ({len(df)} registros)")
     
+    def process_autonomiadigital(self) -> None:
+        """Processa os CSVs de Autonomia Digital, removendo dados sensíveis."""
+        logger.info("Iniciando processamento de dados de Autonomia Digital...")
+        
+        try:
+            # Processar arquivo de avaliações
+            avaliacoes_file = self.raw_path / "dados_avaliacoes_capacitia_autonomiadigital.csv"
+            if avaliacoes_file.exists():
+                logger.info(f"Processando arquivo de avaliações: {avaliacoes_file}")
+                # Tentar diferentes encodings
+                try:
+                    df_avaliacoes = pd.read_csv(avaliacoes_file, sep=';', encoding='utf-8', low_memory=False)
+                except UnicodeDecodeError:
+                    try:
+                        df_avaliacoes = pd.read_csv(avaliacoes_file, sep=';', encoding='latin-1', low_memory=False)
+                    except UnicodeDecodeError:
+                        df_avaliacoes = pd.read_csv(avaliacoes_file, sep=';', encoding='cp1252', low_memory=False)
+                
+                # Remover dados sensíveis e pessoais
+                colunas_sensiveis = [
+                    'Digite seu nome sem abreviar',
+                    'Gênero',
+                    'Idade',
+                    'CPF',
+                    'Se tiver, informe seu e-mail'
+                ]
+                
+                # Encontrar colunas para remover (compatível com diferentes encodings)
+                colunas_para_remover = []
+                for col_sensivel in colunas_sensiveis:
+                    for col_df in df_avaliacoes.columns:
+                        # Comparar normalizando espaços e case
+                        if col_df.strip() == col_sensivel.strip():
+                            colunas_para_remover.append(col_df)
+                            break
+                
+                # Remover colunas sensíveis
+                df_avaliacoes_clean = df_avaliacoes.drop(columns=colunas_para_remover, errors='ignore')
+                
+                # Padronizar nomes das colunas (lowercase, underscore)
+                df_avaliacoes_clean.columns = df_avaliacoes_clean.columns.str.lower().str.replace(' ', '_').str.replace('?', '').str.replace('(', '').str.replace(')', '').str.strip()
+                
+                # Limpar dados
+                df_avaliacoes_clean = df_avaliacoes_clean.fillna('')
+                
+                # Renomear colunas principais para nomes mais limpos
+                rename_map = {
+                    'carimbo_de_data/hora': 'data_hora',
+                    'você_aprendeu_sobre_as_funções_básicas_do_celular_conectar_a_internet_configurar_notificação_toque_fonte_instalar_e_desinstalar_app': 'aprendeu_funcoes_celular',
+                    'você_aprendeu_a_usar_o_seu_e-mail_identificar_seu_e-mail_recuperar_senha': 'aprendeu_email',
+                    'você_aprendeu_a_identificar_sites_confiáveis_e_se_proteger_de_golpes_virtuais_fake_news': 'aprendeu_seguranca_digital',
+                    'você_aprendeu_como_a_inteligência_artificial_pode_te_ajudar_no_dia_a_dia': 'aprendeu_ia',
+                    'você_aprendeu_a_usar_o_govpi_cidadão': 'aprendeu_govpi',
+                    'você_aprendeu_a_usar_o_piauí_saúde_digital': 'aprendeu_saude_digital',
+                    'você_aprendeu_a_usar_o_bo_fácil': 'aprendeu_bo_facil',
+                    'quer_registrar_algo_que_você_aprendeu_a_mais_e_não_está_destacado_acima': 'aprendizados_extras',
+                    'como_você_avalia_esse_evento': 'avaliacao_evento',
+                    'o_que_você_achou_do_conteúdo': 'avaliacao_conteudo',
+                    'o_que_você_achou_do_local_do_evento': 'avaliacao_local',
+                    'como_você_avalia_o_atendimento_e_o_acolhimento_do_evento': 'avaliacao_atendimento',
+                    'deixe_uma_sugestão_elogio_ou_reclamação': 'sugestao_elogio_reclamacao'
+                }
+                df_avaliacoes_clean = df_avaliacoes_clean.rename(columns=rename_map)
+                
+                # Salvar arquivo processado
+                self.save_to_parquet(df_avaliacoes_clean, "autonomiadigital_avaliacoes")
+            else:
+                logger.warning(f"Arquivo de avaliações não encontrado: {avaliacoes_file}")
+            
+            # Processar arquivo de inscrições
+            inscricoes_file = self.raw_path / "dados_inscricoes_capacitia_autonomiadigital.csv"
+            if inscricoes_file.exists():
+                logger.info(f"Processando arquivo de inscrições: {inscricoes_file}")
+                # Tentar diferentes encodings
+                try:
+                    df_inscricoes = pd.read_csv(inscricoes_file, sep=';', encoding='utf-8', low_memory=False)
+                except UnicodeDecodeError:
+                    try:
+                        df_inscricoes = pd.read_csv(inscricoes_file, sep=';', encoding='latin-1', low_memory=False)
+                    except UnicodeDecodeError:
+                        df_inscricoes = pd.read_csv(inscricoes_file, sep=';', encoding='cp1252', low_memory=False)
+                
+                # Remover dados sensíveis e pessoais
+                colunas_sensiveis_originais = [
+                    'Digite seu nome sem abreviar',
+                    'Gênero',
+                    'Idade',
+                    'CPF',
+                    'Cidade',
+                    'Bairro',
+                    'Telefone/Celular/WhatsApp',
+                    'E-mail (se houver)'
+                ]
+                
+                # Encontrar colunas para remover (comparando com nomes originais do CSV)
+                colunas_para_remover = []
+                for col_original in colunas_sensiveis_originais:
+                    for col_df in df_inscricoes.columns:
+                        if col_df.strip() == col_original:
+                            colunas_para_remover.append(col_df)
+                
+                # Remover colunas sensíveis
+                df_inscricoes_clean = df_inscricoes.drop(columns=colunas_para_remover, errors='ignore')
+                
+                # Padronizar nomes das colunas (lowercase, underscore)
+                df_inscricoes_clean.columns = df_inscricoes_clean.columns.str.lower().str.replace(' ', '_').str.replace('/', '_').str.replace('?', '').str.replace('(', '').str.replace(')', '').str.replace('\n', '_').str.strip()
+                
+                # Limpar dados
+                df_inscricoes_clean = df_inscricoes_clean.fillna('')
+                
+                # Renomear colunas principais para nomes mais limpos
+                rename_map = {
+                    'carimbo_de_data/hora': 'data_hora',
+                    'você_é_aposentado(a)': 'aposentado',
+                    'você_participa_de_qual_projeto_de_extensão': 'projeto_extensao',
+                    'caso_você_não_seja_de_nenhum_projeto_citado_acima__1__diga_de_qual_grupo_você_faz_parte_se_houver__2__como_soube_do_treinamento__3__se_inscrever_para_os_dia_28_e_30_de_outubro': 'informacoes_adicional',
+                    'autorizo_o_tratamento_dos_meus_dados_pessoais_pela_sia_nos_termos_da_lei_n_13.709/2018_lgpd': 'autorizacao_lgpd',
+                    'dentre_esses_temas_qual(is)_você_tem_mais_dificuldade': 'temas_dificuldade'
+                }
+                df_inscricoes_clean = df_inscricoes_clean.rename(columns=rename_map)
+                
+                # Salvar arquivo processado
+                self.save_to_parquet(df_inscricoes_clean, "autonomiadigital_inscricoes")
+            else:
+                logger.warning(f"Arquivo de inscrições não encontrado: {inscricoes_file}")
+            
+            logger.info("Processamento de Autonomia Digital concluído!")
+            
+        except Exception as e:
+            logger.error(f"Erro durante o processamento de Autonomia Digital: {e}")
+            raise
+    
+    def process_saude(self) -> None:
+        """Processa o CSV de Saúde, removendo dados sensíveis."""
+        logger.info("Iniciando processamento de dados de Saúde...")
+        
+        try:
+            saude_file = self.raw_path / "dados_capacitia_saude.csv"
+            if not saude_file.exists():
+                logger.warning(f"Arquivo de saúde não encontrado: {saude_file}")
+                return
+            
+            logger.info(f"Processando arquivo de saúde: {saude_file}")
+            # Tentar diferentes encodings
+            try:
+                df_saude = pd.read_csv(saude_file, sep=';', encoding='utf-8', low_memory=False)
+            except UnicodeDecodeError:
+                try:
+                    df_saude = pd.read_csv(saude_file, sep=';', encoding='latin-1', low_memory=False)
+                except UnicodeDecodeError:
+                    df_saude = pd.read_csv(saude_file, sep=';', encoding='cp1252', low_memory=False)
+            
+            # Remover dados sensíveis e pessoais
+            colunas_sensiveis_originais = ['Nome', 'E-mail']
+            
+            # Encontrar colunas para remover (comparando com nomes originais do CSV)
+            colunas_para_remover = []
+            for col_original in colunas_sensiveis_originais:
+                for col_df in df_saude.columns:
+                    if col_df.strip() == col_original:
+                        colunas_para_remover.append(col_df)
+            
+            # Remover colunas sensíveis
+            df_saude_clean = df_saude.drop(columns=colunas_para_remover, errors='ignore')
+            
+            # Remover colunas vazias (Unnamed)
+            df_saude_clean = df_saude_clean.loc[:, ~df_saude_clean.columns.str.contains('^Unnamed')]
+            
+            # Padronizar nomes das colunas (lowercase, underscore)
+            df_saude_clean.columns = df_saude_clean.columns.str.lower().str.replace(' ', '_').str.strip()
+            
+            # Limpar dados
+            df_saude_clean = df_saude_clean.fillna('')
+            
+            # Renomear colunas principais para nomes mais limpos
+            rename_map = {
+                'nº': 'numero',
+                'data': 'data',
+                'lote': 'lote'
+            }
+            df_saude_clean = df_saude_clean.rename(columns=rename_map)
+            
+            # Salvar arquivo processado
+            self.save_to_parquet(df_saude_clean, "saude")
+            
+            logger.info("Processamento de Saúde concluído!")
+            
+        except Exception as e:
+            logger.error(f"Erro durante o processamento de Saúde: {e}")
+            raise
+    
     def process_all(self) -> None:
         """Executa todo o processamento CSV para Parquet."""
         logger.info("Iniciando processamento completo...")
         
         try:
-            # Carregar dados CSV
+            # Carregar dados CSV principais
             df_raw = self.load_csv_data()
             
-            # Criar todos os DataFrames
+            # Criar todos os DataFrames principais
             df_dados = self.create_df_dados(df_raw)
             df_visao = self.create_df_visao(df_raw)
             df_secretarias = self.create_df_secretarias(df_raw)
             df_cargos_raw = self.create_df_cargos_raw(df_raw)
             df_min = self.create_df_min(df_raw)
             
-            # Salvar todos os arquivos Parquet
+            # Salvar todos os arquivos Parquet principais
             self.save_to_parquet(df_dados, "dados")
             self.save_to_parquet(df_visao, "visao_aberta")
             self.save_to_parquet(df_secretarias, "secretarias")
@@ -235,7 +501,13 @@ class CapacitiaCSVProcessor:
             if df_min is not None:
                 self.save_to_parquet(df_min, "ministrantes")
             
-            logger.info("Processamento concluído com sucesso!")
+            # Processar dados de Autonomia Digital
+            self.process_autonomiadigital()
+            
+            # Processar dados de Saúde
+            self.process_saude()
+            
+            logger.info("Processamento completo concluído com sucesso!")
             
         except Exception as e:
             logger.error(f"Erro durante o processamento: {e}")
