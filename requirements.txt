@@ -1,7 +1,23 @@
 # requirements.txt
+# Dependências consolidadas do app e analytics
 
+# Core do app
 streamlit
 pandas
+numpy
 plotly
 openpyxl
 pyarrow
+wordcloud
+matplotlib
+seaborn
+
+# Modelagem e analytics
+scikit-learn
+xgboost==2.0.3
+shap==0.49.1
+
+# Execução de notebooks e automação
+nbconvert
+nbformat
+nbclient
