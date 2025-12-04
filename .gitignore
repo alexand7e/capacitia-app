@@ -23,3 +23,63 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testes / coverage
+.tox/
+.nox/
+.coverage*
+.hypothesis/
+.pytest_cache/
+coverage.xml
+nosetests.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Envs
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Project specific
+.docs/
+docs/
+.data/raw/*.xlsx
+.data/raw/*.xls
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backups
+*.bak
+*.backup
+
+# Analytics outputs (gerados)
+.analytics/reports/
+reports/images/
+
+.analytics
+models
