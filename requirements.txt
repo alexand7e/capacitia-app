@@ -11,6 +11,7 @@ pyarrow
 wordcloud
 matplotlib
 seaborn
+wordcloud
 
 # Modelagem e analytics
 scikit-learn
