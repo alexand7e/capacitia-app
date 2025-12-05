@@ -71,6 +71,43 @@ class CapacitiaCSVProcessor:
         logger.info(f"CSV carregado com {len(df)} linhas e {len(df.columns)} colunas.")
         logger.info(f"Colunas detectadas: {list(df.columns)}")
 
+        def _is_outros(s: str) -> bool:
+            v = str(s).strip().lower()
+            return v in {"outro", "outros"} or v == ""
+
+        def _unify_pair(primary: pd.Series, outros: pd.Series) -> pd.Series:
+            p = primary.astype(str).str.strip()
+            o = outros.astype(str).str.strip()
+            return np.where(p.str.lower().isin(["outro", "outros", ""]), o, p)
+
+        if "orgao" in df.columns:
+            outros_col = df["orgao_outros"] if "orgao_outros" in df.columns else pd.Series([""] * len(df))
+            df["orgao"] = _unify_pair(df["orgao"], outros_col)
+            df["orgao"] = df["orgao"].astype(str).str.strip()
+
+        if "cargo" in df.columns:
+            outros_col = df["cargo_outros"] if "cargo_outros" in df.columns else pd.Series([""] * len(df))
+            df["cargo"] = _unify_pair(df["cargo"], outros_col)
+            df["cargo"] = df["cargo"].astype(str).str.strip()
+
+        if "vinculo" in df.columns:
+            outros_col = df["vinculo_outros"] if "vinculo_outros" in df.columns else pd.Series([""] * len(df))
+            df["vinculo"] = _unify_pair(df["vinculo"], outros_col)
+            df["vinculo"] = df["vinculo"].astype(str).str.strip()
+
+        # Padronização via config
+        try:
+            import src.config as cfg
+        except Exception:
+            import config as cfg
+
+        if "orgao" in df.columns:
+            df["orgao"] = df["orgao"].map(cfg.canonical_orgao)
+        if "cargo" in df.columns:
+            df["cargo"] = df["cargo"].map(cfg.canonical_cargo)
+        if "vinculo" in df.columns:
+            df["vinculo"] = df["vinculo"].map(cfg.canonical_vinculo)
+
         return df
 
     def create_df_dados(self, df):
@@ -118,10 +155,13 @@ class CapacitiaCSVProcessor:
     def create_df_secretarias(self, df):
         logger.info("Gerando secretaria.parquet...")
 
-        # Agrupar somente pelo ÓRGÃO correto (não pelo vínculo)
-        secret = df.groupby("orgao").agg(
+        filtro = df["orgao"].astype(str).str.strip()
+        df_filtrado = df[~filtro.str.lower().isin(["outro", "outros", ""])].copy()
+
+        secret = df_filtrado.groupby("orgao").agg(
             n_inscritos=("nome", "count"),
-            n_certificados=("certificado", lambda x: (x == "Sim").sum())
+            n_certificados=("certificado", lambda x: (x == "Sim").sum()),
+            n_turmas=("evento", "nunique"),
         ).reset_index()
 
         # Calcular evasão
@@ -134,11 +174,14 @@ class CapacitiaCSVProcessor:
 
     def create_df_cargos(self, df):
         logger.info("Gerando cargos...")
+        filtro_cargo = df["cargo"].astype(str).str.strip().str.lower()
+        df_cargos_base = df[~filtro_cargo.isin(["", "outro", "outros"])].copy()
 
-        cargos = df.groupby(["cargo", "orgao"]).agg(
+        cargos = df_cargos_base.groupby(["cargo", "orgao"]).agg(
             total_inscritos=("nome", "count"),
             n_gestores=("cargo_de_gestao", lambda x: (x == "Sim").sum()),
-            n_servidores_estado=("servidor_do_estado", lambda x: (x == "Sim").sum())
+            n_servidores_estado=("servidor_do_estado", lambda x: (x == "Sim").sum()),
+            n_turmas=("evento", "nunique"),
         ).reset_index()
 
         cargos["perc_gestores"] = (
@@ -152,6 +195,7 @@ class CapacitiaCSVProcessor:
         cargos.columns = [
             "cargo", "orgao", "total_inscritos",
             "n_gestores", "n_servidores_estado",
+            "n_turmas",
             "perc_gestores", "perc_servidores"
         ]
 

@@ -227,28 +227,29 @@ def get_secretarias_atendidas(df_sec_view: pd.DataFrame) -> int:
 # =========================
 # Verifica se está no formato padronizado (Parquet) ou original (Excel)
 if 'cargo' in df_cargos_raw.columns:
-    # Formato padronizado dos arquivos Parquet
-    df_cargos_rank = df_cargos_raw.groupby('cargo')['total_inscritos'].sum().sort_values(ascending=False)
+    # Ranking inicial baseado em dados individuais (df_dados)
+    s_rank = (
+        df_dados['cargo'].astype(str).str.strip()
+    )
+    s_rank = s_rank[s_rank != ""]
+    df_cargos_rank = s_rank.value_counts()
     df_cargos_rank = pd.DataFrame({"Cargo": df_cargos_rank.index, "Inscritos": df_cargos_rank.values}).set_index("Cargo")
-    
-    # Criar df_cargos_ev baseado nos dados reais de cargos
-    # Agrupar por cargo e criar eventos simulados para cada cargo
-    cargos_unicos = df_cargos_raw['cargo'].unique()
-    eventos_por_cargo = []
-    
-    for i, cargo in enumerate(cargos_unicos[:10]):  # Limitar a 10 cargos principais
-        cargo_data = df_cargos_raw[df_cargos_raw['cargo'] == cargo]
-        total_inscritos = cargo_data['total_inscritos'].sum()
-        
-        # Criar 3 eventos simulados para cada cargo
-        for j, tipo in enumerate(['Masterclass', 'Workshop', 'Curso']):
-            eventos_por_cargo.append({
-                'evento': f'{cargo} - {tipo} {j+1}',
-                'Tipo': tipo,
-                cargo: int(total_inscritos * [0.3, 0.4, 0.3][j])  # Distribuir proporcionalmente
-            })
-    
-    df_cargos_ev = pd.DataFrame(eventos_por_cargo)
+
+    # df_cargos_ev real: pivot a partir de df_dados (evento x Tipo x cargo)
+    tmp_ev = df_dados[['evento', 'formato', 'cargo']].copy()
+    tmp_ev['cargo'] = tmp_ev['cargo'].astype(str).str.strip()
+    tmp_ev = tmp_ev[tmp_ev['cargo'] != ""]
+    tmp_ev['Tipo'] = (
+        tmp_ev['formato'].fillna("").astype(str).str.strip().str.title().replace({"Curso": "Curso de IA"})
+    )
+    tmp_ev['Inscritos'] = 1
+    df_cargos_ev = (
+        tmp_ev.groupby(['evento', 'Tipo', 'cargo'])['Inscritos'].sum().reset_index()
+    )
+    df_cargos_ev = (
+        df_cargos_ev.pivot_table(index=['evento', 'Tipo'], columns='cargo', values='Inscritos', aggfunc='sum', fill_value=0)
+        .reset_index()
+    )
     cargo_cols = [c for c in df_cargos_ev.columns if c not in ['evento', 'Tipo']]
 else:
     # Formato original do Excel
@@ -370,95 +371,42 @@ else:
 
 # 2. Filtro por órgão específico
 if orgao_selecionado != "Todos":
-    # CORREÇÃO: Usar nome correto da coluna em df_secretarias
     df_secretarias_filtrado = df_secretarias[df_secretarias["SECRETARIA/ÓRGÃO"] == orgao_selecionado].copy()
-    # CORREÇÃO: Usar df_dados em vez de df_f
     df_dados_filtrado = df_dados_filtrado[df_dados_filtrado["orgao"] == orgao_selecionado].copy()
-    # Manter df_f para compatibilidade com código existente
     df_f_filtrado = df_f[df_f["SECRETARIA/ÓRGÃO"] == orgao_selecionado].copy()
-    
-    # Aplicar filtro de órgão aos dados de cargos também
-    if 'orgao' in df_cargos_raw.columns:
-        # Para dados Parquet: filtrar cargos pelo órgão selecionado
-        cargos_orgao_filtrado = df_cargos_raw[df_cargos_raw['orgao'] == orgao_selecionado]
-        if not cargos_orgao_filtrado.empty:
-            # Recriar df_cargos_ev apenas com cargos do órgão selecionado
-            cargos_unicos_filtrados = cargos_orgao_filtrado['cargo'].unique()
-            eventos_por_cargo_filtrado = []
-            
-            for cargo in cargos_unicos_filtrados[:10]:  # Limitar a 10 cargos principais
-                cargo_data = cargos_orgao_filtrado[cargos_orgao_filtrado['cargo'] == cargo]
-                total_inscritos = cargo_data['total_inscritos'].sum()
-                
-                # Criar 3 eventos simulados para cada cargo
-                for j, tipo in enumerate(['Masterclass', 'Workshop', 'Curso']):
-                    eventos_por_cargo_filtrado.append({
-                        'evento': f'{cargo} - {tipo} {j+1}',
-                        'Tipo': tipo,
-                        cargo: int(total_inscritos * [0.3, 0.4, 0.3][j])  # Distribuir proporcionalmente
-                    })
-            
-            if eventos_por_cargo_filtrado:
-                df_cargos_ev_temp = pd.DataFrame(eventos_por_cargo_filtrado)
-                # Aplicar filtro de tipo se necessário
-                if tipo_selecionado != "Todos":
-                    df_cargos_ev_filtrado = df_cargos_ev_temp[df_cargos_ev_temp["Tipo"] == tipo_selecionado].copy()
-                else:
-                    df_cargos_ev_filtrado = df_cargos_ev_temp.copy()
-            else:
-                # Se não há cargos para o órgão selecionado, criar DataFrame vazio
-                df_cargos_ev_filtrado = pd.DataFrame(columns=df_cargos_ev.columns)
 else:
     df_secretarias_filtrado = df_secretarias.copy()
     df_f_filtrado = df_f.copy()
 
 # 3. Aplicar filtro de órgão externo
 if orgao_externo_selecionado != "Todos":
-    # CORREÇÃO: Usar df_dados_filtrado em vez de df_f_filtrado para filtro de órgão externo
     if 'orgao_externo' in df_dados_filtrado.columns:
         df_dados_filtrado = df_dados_filtrado[df_dados_filtrado["orgao_externo"] == orgao_externo_selecionado].copy()
-        
-        # Atualizar df_secretarias_filtrado baseado nos órgãos que restaram
         orgaos_restantes = df_dados_filtrado["orgao"].unique()
         df_secretarias_filtrado = df_secretarias_filtrado[df_secretarias_filtrado["SECRETARIA/ÓRGÃO"].isin(orgaos_restantes)].copy()
-        
-        # Manter df_f_filtrado para compatibilidade (se tiver coluna orgao_externo)
         if 'orgao_externo' in df_f.columns:
             df_f_filtrado = df_f_filtrado[df_f_filtrado["orgao_externo"] == orgao_externo_selecionado].copy()
-    
-    # Aplicar filtro de órgão externo aos dados de cargos também
-    if 'orgao' in df_cargos_raw.columns and len(df_dados_filtrado) > 0:
-        # Filtrar cargos pelos órgãos que restaram após o filtro de órgão externo
-        orgaos_filtrados = df_dados_filtrado["orgao"].unique()
-        cargos_orgao_externo_filtrado = df_cargos_raw[df_cargos_raw["orgao"].isin(orgaos_filtrados)]
-        
-        if not cargos_orgao_externo_filtrado.empty:
-            # Recriar df_cargos_ev apenas com cargos da classificação selecionada
-            cargos_unicos_filtrados = cargos_orgao_externo_filtrado['cargo'].unique()
-            eventos_por_cargo_filtrado = []
-            
-            for cargo in cargos_unicos_filtrados[:10]:  # Limitar a 10 cargos principais
-                cargo_data = cargos_orgao_externo_filtrado[cargos_orgao_externo_filtrado['cargo'] == cargo]
-                total_inscritos = cargo_data['total_inscritos'].sum()
-                
-                # Criar 3 eventos simulados para cada cargo
-                for j, tipo in enumerate(['Masterclass', 'Workshop', 'Curso de IA']):
-                    eventos_por_cargo_filtrado.append({
-                        'evento': f'{cargo} - {tipo} {j+1}',
-                        'Tipo': tipo,
-                        cargo: int(total_inscritos * [0.3, 0.4, 0.3][j])  # Distribuir proporcionalmente
-                    })
-            
-            if eventos_por_cargo_filtrado:
-                df_cargos_ev_temp = pd.DataFrame(eventos_por_cargo_filtrado)
-                # Aplicar filtro de tipo se necessário
-                if tipo_selecionado != "Todos":
-                    df_cargos_ev_filtrado = df_cargos_ev_temp[df_cargos_ev_temp["Tipo"] == tipo_selecionado].copy()
-                else:
-                    df_cargos_ev_filtrado = df_cargos_ev_temp.copy()
-            else:
-                # Se não há cargos para a classificação selecionada, criar DataFrame vazio com estrutura mínima
-                df_cargos_ev_filtrado = pd.DataFrame(columns=['evento', 'Tipo'])
+
+# Recriar df_cargos_ev_filtrado a partir de df_dados_filtrado (dados reais)
+if 'cargo' in df_dados_filtrado.columns and len(df_dados_filtrado) > 0:
+    tmp_ev_f = df_dados_filtrado[['evento', 'formato', 'cargo']].copy()
+    tmp_ev_f['cargo'] = tmp_ev_f['cargo'].astype(str).str.strip()
+    tmp_ev_f = tmp_ev_f[tmp_ev_f['cargo'] != ""]
+    tmp_ev_f['Tipo'] = (
+        tmp_ev_f['formato'].fillna("").astype(str).str.strip().str.title().replace({"Curso": "Curso de IA"})
+    )
+    tmp_ev_f['Inscritos'] = 1
+    df_cargos_ev_filtrado = (
+        tmp_ev_f.groupby(['evento', 'Tipo', 'cargo'])['Inscritos'].sum().reset_index()
+    )
+    df_cargos_ev_filtrado = (
+        df_cargos_ev_filtrado.pivot_table(index=['evento', 'Tipo'], columns='cargo', values='Inscritos', aggfunc='sum', fill_value=0)
+        .reset_index()
+    )
+    cargo_cols = [c for c in df_cargos_ev_filtrado.columns if c not in ['evento', 'Tipo']]
+else:
+    df_cargos_ev_filtrado = pd.DataFrame(columns=['evento', 'Tipo'])
+    cargo_cols = []
 
 # ==========================================
 # RECALCULAR KPIs COM DADOS FILTRADOS - VERSÃO CORRIGIDA
@@ -500,47 +448,13 @@ else:
 # =========================
 # RECALCULAR df_cargos_rank COM DADOS FILTRADOS
 # =========================
-# Recriar df_cargos_rank baseado nos dados filtrados para que o gráfico "Desempenho por Cargo (Inscritos)" seja afetado pelos filtros
-if 'cargo' in df_cargos_raw.columns:
-    # Usar df_dados_filtrado para recalcular cargos
-    if len(df_dados_filtrado) > 0:
-        # Agrupar por cargo usando os dados filtrados
-        df_cargos_filtrado = df_cargos_raw[df_cargos_raw['orgao'].isin(df_dados_filtrado['orgao'].unique())].copy()
-        
-        # Se há filtro de tipo de curso, aplicar também aos cargos
-        if tipo_selecionado != "Todos":
-            # Mapear tipos de evento para filtrar cargos correspondentes
-            evento_mapping = {
-                "Masterclass": ["Masterclass"],
-                "Workshop": ["Workshop"], 
-                "Curso": ["Curso"]
-            }
-            if tipo_selecionado in evento_mapping:
-                # Filtrar cargos baseado no tipo selecionado (simulação)
-                # Como não temos ligação direta entre df_dados e df_cargos por tipo,
-                # vamos manter todos os cargos dos órgãos filtrados
-                pass
-        
-        if len(df_cargos_filtrado) > 0:
-            df_cargos_rank = df_cargos_filtrado.groupby('cargo')['total_inscritos'].sum().sort_values(ascending=False)
-            df_cargos_rank = pd.DataFrame({"Cargo": df_cargos_rank.index, "Inscritos": df_cargos_rank.values}).set_index("Cargo")
-        else:
-            # Se não há dados filtrados, criar DataFrame vazio
-            df_cargos_rank = pd.DataFrame(columns=["Inscritos"]).set_index(pd.Index([], name="Cargo"))
-    else:
-        # Se não há dados filtrados, criar DataFrame vazio
-        df_cargos_rank = pd.DataFrame(columns=["Inscritos"]).set_index(pd.Index([], name="Cargo"))
+if len(df_dados_filtrado) > 0 and 'cargo' in df_dados_filtrado.columns:
+    s_rank_f = df_dados_filtrado['cargo'].astype(str).str.strip()
+    s_rank_f = s_rank_f[s_rank_f != ""]
+    df_cargos_rank = s_rank_f.value_counts()
+    df_cargos_rank = pd.DataFrame({"Cargo": df_cargos_rank.index, "Inscritos": df_cargos_rank.values}).set_index("Cargo")
 else:
-    # Para formato Excel, recalcular baseado em df_cargos_ev_filtrado
-    if len(df_cargos_ev_filtrado) > 0:
-        totais_por_cargo = df_cargos_ev_filtrado[cargo_cols].sum().sort_values(ascending=False)
-        df_cargos_rank = (
-            pd.DataFrame({"Cargo": totais_por_cargo.index, "Inscritos": totais_por_cargo.values})
-            .sort_values("Inscritos", ascending=False).set_index("Cargo")
-        )
-    else:
-        # Se não há dados filtrados, criar DataFrame vazio
-        df_cargos_rank = pd.DataFrame(columns=["Inscritos"]).set_index(pd.Index([], name="Cargo"))
+    df_cargos_rank = pd.DataFrame(columns=["Inscritos"]).set_index(pd.Index([], name="Cargo"))
 
 # =========================
 # EXIBIR KPIs
@@ -747,30 +661,43 @@ with tab2:
     st.markdown('<div class="panel"><h3>Evolução por Evento</h3>', unsafe_allow_html=True)
     if cargo_cols_existentes and not df_ev_view.empty:
         cargo_escolhido = st.selectbox("Escolha um cargo", cargo_cols_existentes, index=0, key="t2_cargo_series")
-        
-        # Definir coluna de evento baseado no formato
-        if 'cargo' in df_cargos_raw.columns:
-            # Formato Parquet - usar dados simulados
-            evento_col = "evento" if "evento" in df_ev_view.columns else df_ev_view.columns[0]
-        else:
-            # Formato Excel
-            evento_col = df_cargos_raw.columns[0]  # EVENTO_COL equivalente
-        
-        # Evitar duplicação de colunas no rename
+
+        evento_col = "evento" if "evento" in df_ev_view.columns else df_ev_view.columns[0]
+
         rename_dict = {cargo_escolhido: "Inscritos"}
         if evento_col != "Evento":
             rename_dict[evento_col] = "Evento"
-        
+
         serie = df_ev_view[[evento_col, "Tipo", cargo_escolhido]].rename(columns=rename_dict)
-        serie = nz(serie, ["Inscritos"])
-        if serie.empty:
-            st.info("Sem dados para a série.")
-        else:
-            fig_series = px.bar(serie, x="Evento", y="Inscritos", color="Tipo", barmode="group", title=None)
-            fig_series.update_layout(bargap=0.02, bargroupgap=0.02)
-            fig_series.update_traces(marker_line_width=0)
-            fig_series.update_xaxes(tickangle=-35)
+        serie = nz(serie, ["Inscritos"]) 
+
+        if not serie.empty:
+            serie["Tipo"] = serie["Tipo"].astype(str).str.strip().str.title().replace({"Curso": "Curso de IA"})
+
+            top_ev = (
+                serie.groupby("Evento")["Inscritos"].sum().sort_values(ascending=False).head(topn).index
+            )
+            serie = serie[serie["Evento"].isin(top_ev)].copy()
+
+            def _evt_short(s: str, t: str) -> str:
+                m = re.search(r"(\d+)\s*[ºª]?\s*(Masterclass|Workshop|Curso(?:\s+de\s+IA)?)", str(s), flags=re.I)
+                if m:
+                    num = m.group(1)
+                    kind = re.sub(r"(?i)^curso(?:\s+de\s+ia)?$", "Curso de IA", m.group(2)).title()
+                    return f"{num}° {kind}"
+                return " ".join(str(s).split()[:6])
+
+            serie["EVENTO_LABEL"] = serie.apply(lambda r: _evt_short(r["Evento"], r["Tipo"]), axis=1)
+
+            fig_series = px.bar(
+                serie, x="Inscritos", y="EVENTO_LABEL", color="Tipo", barmode="group", title=None, orientation="h"
+            )
+            x_max = max(1, serie["Inscritos"].max())
+            fig_series.update_traces(text=serie["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
+            fig_series.update_xaxes(range=[0, x_max * 1.15])
             st.plotly_chart(style_fig(fig_series, height=520), use_container_width=True, key=f"t2_cargos_series_{cargo_escolhido}")
+        else:
+            st.info("Sem dados para a série.")
     else:
         st.info("Nenhuma coluna de cargo encontrada.")
     st.markdown('</div>', unsafe_allow_html=True)
