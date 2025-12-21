@@ -56,7 +56,7 @@ st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
 # =========================
 # DATA LOAD
 # =========================
-df_dados, df_visao, df_secretarias_raw, df_cargos_raw, df_min = load_servidores_data()
+df_dados, df_visao, df_secretarias_raw, df_cargos_raw, df_min, df_orgaos_parceiros = load_servidores_data()
 
 if df_dados is None:
     st.error("Erro ao carregar dados. Verifique se os arquivos Parquet foram gerados.")
@@ -282,9 +282,48 @@ Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 </div>
 """, unsafe_allow_html=True)
 
-# Botão para voltar à home
-if st.button("🏠 Voltar à Home", key="btn_home_servidores"):
-    st.switch_page("app.py")
+# Botões de ação
+col_btn1, col_btn2 = st.columns(2)
+with col_btn1:
+    if st.button("🏠 Voltar à Home", key="btn_home_servidores", use_container_width=True):
+        st.switch_page("app.py")
+
+with col_btn2:
+    if st.button("📄 Gerar Relatório PDF", key="btn_gerar_pdf", use_container_width=True, type="primary"):
+        with st.spinner("Gerando relatório PDF..."):
+            try:
+                from src.utils.pdf_gen import gerar_relatorio_capacitia
+                
+                # Gerar PDF com os dados atuais
+                pdf_path = gerar_relatorio_capacitia(
+                    df_dados=df_dados,
+                    df_visao=df_visao,
+                    df_secretarias=df_secretarias,
+                    df_cargos=df_cargos_raw,
+                    df_orgaos_parceiros=df_orgaos_parceiros,
+                    nome_arquivo=f"relatorio_capacitia_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                )
+                
+                if pdf_path:
+                    # Ler o arquivo PDF para download
+                    with open(pdf_path, "rb") as pdf_file:
+                        pdf_bytes = pdf_file.read()
+                    
+                    st.success("✅ Relatório gerado com sucesso!")
+                    st.download_button(
+                        label="⬇️ Baixar Relatório PDF",
+                        data=pdf_bytes,
+                        file_name=f"relatorio_capacitia_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf",
+                        key="download_pdf"
+                    )
+                else:
+                    st.error("❌ Erro ao gerar relatório. Verifique os logs.")
+            except ImportError as e:
+                st.error(f"❌ Erro: Dependências não instaladas. Execute: pip install reportlab kaleido")
+            except Exception as e:
+                st.error(f"❌ Erro ao gerar relatório: {str(e)}")
+
 
 
 # KPIs serão exibidos após o cálculo com dados filtrados
@@ -472,7 +511,7 @@ st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
 
 
 
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Visão Geral", "👥 Cargos", "🏢 Secretarias", "📚 Eventos"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Visão Geral", "👥 Cargos", "🏢 Secretarias", "📚 Eventos", "🤝 Órgãos Parceiros"])
 
 # --------- Visão Geral
 with tab1:
@@ -802,6 +841,58 @@ with tab4:
         ).replace([pd.NA, float("inf")], 0).fillna(0) * 100
         ev["Evasão (Nº)"] = (ev[inscritos_col_ev] - ev[certificados_col_ev]).clip(lower=0)
 
+        # =========================
+        # KPIs DE TURMAS
+        # =========================
+        st.markdown("### 📊 Métricas de Turmas/Eventos")
+        
+        total_turmas = len(ev)
+        media_participantes = ev[inscritos_col_ev].mean() if total_turmas > 0 else 0
+        media_certificados = ev[certificados_col_ev].mean() if total_turmas > 0 else 0
+        taxa_cert_eventos = (ev[certificados_col_ev].sum() / ev[inscritos_col_ev].sum() * 100) if ev[inscritos_col_ev].sum() > 0 else 0
+        
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+        kpi_col1.markdown(f'<div class="kpi"><h4>Total de Turmas</h4><div class="val">{total_turmas}</div></div>', unsafe_allow_html=True)
+        kpi_col2.markdown(f'<div class="kpi"><h4>Média Participantes</h4><div class="val">{media_participantes:.1f}</div></div>', unsafe_allow_html=True)
+        kpi_col3.markdown(f'<div class="kpi"><h4>Média Certificados</h4><div class="val">{media_certificados:.1f}</div></div>', unsafe_allow_html=True)
+        kpi_col4.markdown(f'<div class="kpi"><h4>Taxa Certificação</h4><div class="val">{taxa_cert_eventos:.1f}%</div></div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
+        
+        # =========================
+        # MÉTRICAS POR TIPO
+        # =========================
+        st.markdown("### 📚 Análise por Tipo de Evento")
+        
+        # Calcular métricas por tipo
+        metricas_tipo = ev.groupby("Tipo").agg({
+            evento_col_ev: 'count',
+            inscritos_col_ev: ['sum', 'mean'],
+            certificados_col_ev: ['sum', 'mean']
+        }).round(1)
+        
+        metricas_tipo.columns = ['Num_Eventos', 'Total_Inscritos', 'Media_Inscritos', 'Total_Certificados', 'Media_Certificados']
+        metricas_tipo['Taxa_Cert'] = (metricas_tipo['Total_Certificados'] / metricas_tipo['Total_Inscritos'] * 100).round(1)
+        metricas_tipo = metricas_tipo.reset_index()
+        
+        # Exibir tabela de métricas
+        st.dataframe(
+            metricas_tipo,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Tipo": st.column_config.TextColumn("Tipo de Evento", width="medium"),
+                "Num_Eventos": st.column_config.NumberColumn("Nº Turmas", format="%d"),
+                "Total_Inscritos": st.column_config.NumberColumn("Total Participantes", format="%d"),
+                "Media_Inscritos": st.column_config.NumberColumn("Média Participantes", format="%.1f"),
+                "Total_Certificados": st.column_config.NumberColumn("Total Certificados", format="%d"),
+                "Media_Certificados": st.column_config.NumberColumn("Média Certificados", format="%.1f"),
+                "Taxa_Cert": st.column_config.NumberColumn("Taxa Cert. (%)", format="%.1f%%"),
+            }
+        )
+        
+        st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
+
         def evento_curto(evento: str, tipo: str) -> str:
             s = str(evento)
             m = re.search(r"(\d+)\s*[ºª]?\s*(?=Masterclass|Workshop|Curso)", s, flags=re.I)
@@ -811,11 +902,58 @@ with tab4:
 
         ev["EVENTO_CURTO"] = ev.apply(lambda r: evento_curto(r[evento_col_ev], r["Tipo"]), axis=1)
 
-        show_ev_table = st.toggle("Mostrar tabela de eventos", value=False,
-                                  help="Ative para visualizar a planilha; por padrão fica oculta.")
+        # =========================
+        # TABELA DETALHADA DE EVENTOS
+        # =========================
+        st.markdown("### 📋 Detalhamento de Todas as Turmas")
+        
+        show_ev_table = st.toggle("Mostrar tabela detalhada de eventos", value=True,
+                                  help="Visualize todos os eventos com suas métricas individuais")
         if show_ev_table:
-            cols_evento = [c for c in ["Nº",evento_col_ev,"Tipo",inscritos_col_ev,certificados_col_ev,"Evasão (Nº)","Taxa de Certificação (%)"] if c in ev.columns]
-            df_panel(ev[cols_evento].reset_index(drop=True), "Eventos (filtrados)", key=f"tbl_evt_{len(ev)}")
+            # Preparar dados para exibição
+            ev_display = ev.copy()
+            ev_display = ev_display.sort_values(inscritos_col_ev, ascending=False)
+            
+            cols_display = []
+            col_config = {}
+            
+            if evento_col_ev in ev_display.columns:
+                cols_display.append(evento_col_ev)
+                col_config[evento_col_ev] = st.column_config.TextColumn("Evento", width="large")
+            
+            if "Tipo" in ev_display.columns:
+                cols_display.append("Tipo")
+                col_config["Tipo"] = st.column_config.TextColumn("Tipo", width="small")
+            
+            if inscritos_col_ev in ev_display.columns:
+                cols_display.append(inscritos_col_ev)
+                col_config[inscritos_col_ev] = st.column_config.NumberColumn("Inscritos", format="%d")
+            
+            if certificados_col_ev in ev_display.columns:
+                cols_display.append(certificados_col_ev)
+                col_config[certificados_col_ev] = st.column_config.NumberColumn("Certificados", format="%d")
+            
+            if "Taxa de Certificação (%)" in ev_display.columns:
+                cols_display.append("Taxa de Certificação (%)")
+                col_config["Taxa de Certificação (%)"] = st.column_config.NumberColumn("Taxa Cert. (%)", format="%.1f%%")
+            
+            st.dataframe(
+                ev_display[cols_display],
+                use_container_width=True,
+                hide_index=True,
+                column_config=col_config,
+                height=400
+            )
+            
+            st.caption(f"📊 Total: {len(ev_display)} turma(s)")
+        
+        st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
+        
+        # =========================
+        # VISUALIZAÇÕES EXISTENTES
+        # =========================
+        st.markdown("### 📈 Visualizações Comparativas")
+
 
         by_tipo = ev.groupby("Tipo")[[inscritos_col_ev, certificados_col_ev]].sum().replace([np.inf, -np.inf], 0).fillna(0)
         col_left, col_right = st.columns([1.2, 1])
@@ -897,6 +1035,168 @@ with tab4:
                     </div>
                     """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+
+# --------- Órgãos Parceiros
+with tab5:
+    st.markdown('<div class="panel"><h3>🤝 Análise de Órgãos Parceiros</h3>', unsafe_allow_html=True)
+    
+    if df_orgaos_parceiros is not None and len(df_orgaos_parceiros) > 0:
+        # KPIs de órgãos parceiros
+        total_parceiros = len(df_orgaos_parceiros)
+        total_inscritos_parceiros = df_orgaos_parceiros['n_inscritos'].sum()
+        total_certificados_parceiros = df_orgaos_parceiros['n_certificados'].sum()
+        taxa_cert_parceiros = (total_certificados_parceiros / total_inscritos_parceiros * 100) if total_inscritos_parceiros > 0 else 0
+        
+        kpi_p1, kpi_p2, kpi_p3, kpi_p4 = st.columns(4)
+        kpi_p1.markdown(f'<div class="kpi"><h4>Órgãos Parceiros</h4><div class="val">{total_parceiros}</div></div>', unsafe_allow_html=True)
+        kpi_p2.markdown(f'<div class="kpi"><h4>Total Inscritos</h4><div class="val">{fmt_int_br(total_inscritos_parceiros)}</div></div>', unsafe_allow_html=True)
+        kpi_p3.markdown(f'<div class="kpi"><h4>Total Certificados</h4><div class="val">{fmt_int_br(total_certificados_parceiros)}</div></div>', unsafe_allow_html=True)
+        kpi_p4.markdown(f'<div class="kpi"><h4>Taxa Certificação</h4><div class="val">{taxa_cert_parceiros:.2f}%</div></div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
+        
+        # Gráficos e análises
+        col_p1, col_p2 = st.columns(2)
+        
+        with col_p1:
+            st.markdown('<div class="panel"><h4>Top Órgãos Parceiros por Inscritos</h4>', unsafe_allow_html=True)
+            top_parceiros = df_orgaos_parceiros.head(10).sort_values('n_inscritos')
+            if not top_parceiros.empty:
+                fig_parceiros = px.bar(
+                    top_parceiros, 
+                    x='n_inscritos', 
+                    y='orgao_parceiro', 
+                    orientation='h',
+                    title=None,
+                    labels={'n_inscritos': 'Inscritos', 'orgao_parceiro': 'Órgão Parceiro'}
+                )
+                x_max_p = max(1, top_parceiros['n_inscritos'].max())
+                fig_parceiros.update_traces(
+                    text=top_parceiros['n_inscritos'], 
+                    texttemplate="%{x}", 
+                    textposition="outside", 
+                    cliponaxis=False
+                )
+                fig_parceiros.update_xaxes(range=[0, x_max_p * 1.15])
+                st.plotly_chart(style_fig(fig_parceiros, height=460), use_container_width=True, key="parceiros_bar")
+            else:
+                st.info("Sem dados para exibir.")
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        with col_p2:
+            st.markdown('<div class="panel"><h4>Taxa de Certificação por Órgão</h4>', unsafe_allow_html=True)
+            top_taxa_parceiros = df_orgaos_parceiros[df_orgaos_parceiros['n_inscritos'] > 0].sort_values('taxa_certificacao', ascending=False).head(10).sort_values('taxa_certificacao')
+            if not top_taxa_parceiros.empty:
+                fig_taxa_parceiros = px.bar(
+                    top_taxa_parceiros,
+                    x='taxa_certificacao',
+                    y='orgao_parceiro',
+                    orientation='h',
+                    title=None,
+                    labels={'taxa_certificacao': 'Taxa de Certificação (%)', 'orgao_parceiro': 'Órgão Parceiro'}
+                )
+                fig_taxa_parceiros.update_traces(
+                    text=top_taxa_parceiros['taxa_certificacao'],
+                    texttemplate="%{x:.1f}%",
+                    textposition="outside",
+                    cliponaxis=False
+                )
+                fig_taxa_parceiros.update_xaxes(ticksuffix="%", range=[0, 105])
+                st.plotly_chart(style_fig(fig_taxa_parceiros, height=460), use_container_width=True, key="parceiros_taxa")
+            else:
+                st.info("Sem dados para exibir.")
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Treemap de participação
+        st.markdown('<div class="panel"><h3>Participação dos Órgãos Parceiros</h3>', unsafe_allow_html=True)
+        if not df_orgaos_parceiros.empty:
+            treemap_parceiros = px.treemap(
+                df_orgaos_parceiros.head(20),
+                path=['orgao_parceiro'],
+                values='n_inscritos',
+                color='taxa_certificacao',
+                color_continuous_scale='RdYlGn',
+                title='Distribuição de Participantes por Órgão Parceiro',
+                hover_data={'n_inscritos': True, 'n_certificados': True, 'taxa_certificacao': ':.1f'}
+            )
+            treemap_parceiros.update_traces(
+                texttemplate="<b>%{label}</b><br>%{value} part.<br>%{color:.1f}% cert.",
+                textposition="middle center",
+                textfont_size=10
+            )
+            treemap_parceiros.update_layout(height=500)
+            st.plotly_chart(style_fig(treemap_parceiros, height=500), use_container_width=True, key="parceiros_treemap")
+        else:
+            st.info("Sem dados para o treemap.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Tabela detalhada
+        st.markdown('<div class="panel"><h3>Tabela Detalhada de Órgãos Parceiros</h3>', unsafe_allow_html=True)
+        show_parceiros_table = st.toggle("Mostrar tabela detalhada", value=False, key="toggle_parceiros")
+        if show_parceiros_table:
+            df_display_parceiros = df_orgaos_parceiros.copy()
+            df_display_parceiros = df_display_parceiros.sort_values('n_inscritos', ascending=False)
+            st.dataframe(
+                df_display_parceiros,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "orgao_parceiro": st.column_config.TextColumn("Órgão Parceiro", width="large"),
+                    "n_inscritos": st.column_config.NumberColumn("Inscritos", format="%d"),
+                    "n_certificados": st.column_config.NumberColumn("Certificados", format="%d"),
+                    "n_turmas": st.column_config.NumberColumn("Turmas", format="%d"),
+                    "taxa_certificacao": st.column_config.NumberColumn("Taxa Cert. (%)", format="%.2f%%"),
+                    "formatos": st.column_config.TextColumn("Formatos", width="medium"),
+                    "eixos": st.column_config.TextColumn("Eixos", width="medium"),
+                },
+                height=400
+            )
+            st.caption(f"📊 Total: {len(df_display_parceiros)} órgão(ões) parceiro(s)")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Análise por formato e eixo
+        st.markdown('<div class="panel"><h3>Análise por Formato e Eixo</h3>', unsafe_allow_html=True)
+        
+        # Filtrar dados de órgãos parceiros do df_dados
+        if 'orgao_externo' in df_dados.columns:
+            df_parceiros_detalhado = df_dados[df_dados['orgao_externo'] == 'Sim'].copy()
+            
+            if len(df_parceiros_detalhado) > 0:
+                col_p3, col_p4 = st.columns(2)
+                
+                with col_p3:
+                    if 'formato' in df_parceiros_detalhado.columns:
+                        formato_counts = df_parceiros_detalhado['formato'].value_counts()
+                        if not formato_counts.empty:
+                            fig_formato_parceiros = px.pie(
+                                formato_counts.reset_index(),
+                                values='count',
+                                names='formato',
+                                title='Distribuição por Formato',
+                                hole=0.4
+                            )
+                            st.plotly_chart(style_fig(fig_formato_parceiros, height=400), use_container_width=True, key="parceiros_formato")
+                
+                with col_p4:
+                    if 'eixo' in df_parceiros_detalhado.columns:
+                        eixo_counts = df_parceiros_detalhado['eixo'].value_counts()
+                        if not eixo_counts.empty:
+                            fig_eixo_parceiros = px.pie(
+                                eixo_counts.reset_index(),
+                                values='count',
+                                names='eixo',
+                                title='Distribuição por Eixo',
+                                hole=0.4
+                            )
+                            st.plotly_chart(style_fig(fig_eixo_parceiros, height=400), use_container_width=True, key="parceiros_eixo")
+        else:
+            st.info("Dados detalhados de formato e eixo não disponíveis.")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.info("📊 Nenhum órgão parceiro encontrado nos dados ou arquivo não foi gerado. Execute o processamento de dados para criar o arquivo 'orgaos_parceiros.parquet'.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # RODAPÉ GLOBAL

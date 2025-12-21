@@ -13,6 +13,10 @@ matplotlib
 seaborn
 wordcloud
 
+# PDF Generation
+reportlab
+kaleido
+
 # Modelagem e analytics
 scikit-learn
 xgboost==2.0.3

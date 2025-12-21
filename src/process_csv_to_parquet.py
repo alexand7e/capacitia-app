@@ -172,6 +172,47 @@ class CapacitiaCSVProcessor:
 
         return secret
 
+    def create_df_orgaos_parceiros(self, df):
+        logger.info("Gerando orgaos_parceiros.parquet...")
+
+        # Filtrar apenas órgãos externos
+        if "orgao_externo" not in df.columns:
+            logger.warning("Coluna 'orgao_externo' não encontrada. Criando DataFrame vazio.")
+            return pd.DataFrame(columns=["orgao_parceiro", "n_inscritos", "n_certificados", 
+                                         "n_turmas", "taxa_certificacao", "formatos", "eixos"])
+
+        # Normalizar valores para comparação case-insensitive
+        df_parceiros = df[df["orgao_externo"].astype(str).str.strip().str.upper() == "SIM"].copy()
+
+        if len(df_parceiros) == 0:
+            # Verificar valores únicos para debug
+            valores_unicos = df["orgao_externo"].astype(str).str.strip().str.upper().unique()
+            logger.warning(f"Nenhum órgão parceiro encontrado nos dados. Valores únicos em 'orgao_externo': {valores_unicos}")
+            return pd.DataFrame(columns=["orgao_parceiro", "n_inscritos", "n_certificados", 
+                                         "n_turmas", "taxa_certificacao", "formatos", "eixos"])
+
+        # Agrupar por órgão
+        parceiros = df_parceiros.groupby("orgao").agg(
+            n_inscritos=("nome", "count"),
+            n_certificados=("certificado", lambda x: (x.astype(str).str.strip().str.upper() == "SIM").sum()),
+            n_turmas=("evento", "nunique"),
+            formatos=("formato", lambda x: ", ".join(x.unique().astype(str))),
+            eixos=("eixo", lambda x: ", ".join(x.unique().astype(str))),
+        ).reset_index()
+
+        # Calcular taxa de certificação
+        parceiros["taxa_certificacao"] = (
+            (parceiros["n_certificados"] / parceiros["n_inscritos"] * 100).round(2)
+        )
+
+        # Renomear coluna
+        parceiros = parceiros.rename(columns={"orgao": "orgao_parceiro"})
+
+        # Ordenar por número de inscritos
+        parceiros = parceiros.sort_values("n_inscritos", ascending=False)
+
+        return parceiros
+
     def create_df_cargos(self, df):
         logger.info("Gerando cargos...")
         filtro_cargo = df["cargo"].astype(str).str.strip().str.lower()
@@ -243,6 +284,9 @@ class CapacitiaCSVProcessor:
 
         df_secretarias = self.create_df_secretarias(df)
         self.save_to_parquet(df_secretarias, "secretarias")
+
+        df_orgaos_parceiros = self.create_df_orgaos_parceiros(df)
+        self.save_to_parquet(df_orgaos_parceiros, "orgaos_parceiros")
 
         logger.info("Processamento concluído com sucesso!")
 

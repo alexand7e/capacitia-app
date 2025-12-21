@@ -19,14 +19,27 @@ def load_servidores_data() -> Tuple[Optional[pd.DataFrame], ...]:
         df_visao = pd.read_parquet(processed_path / "visao_aberta.parquet")
         df_secretarias = pd.read_parquet(processed_path / "secretarias.parquet")
         df_cargos = pd.read_parquet(processed_path / "cargos.parquet")
+        
+        # Normalizar campo 'formato' removendo espaços extras
+        if 'formato' in df_dados.columns:
+            df_dados['formato'] = df_dados['formato'].str.strip()
+        if 'formato' in df_visao.columns:
+            df_visao['formato'] = df_visao['formato'].str.strip()
+        
         try:
             df_min = pd.read_parquet(processed_path / "ministrantes.parquet")
         except Exception:
             df_min = None
-        return df_dados, df_visao, df_secretarias, df_cargos, df_min
+        
+        try:
+            df_orgaos_parceiros = pd.read_parquet(processed_path / "orgaos_parceiros.parquet")
+        except Exception:
+            df_orgaos_parceiros = None
+            
+        return df_dados, df_visao, df_secretarias, df_cargos, df_min, df_orgaos_parceiros
     except Exception as e:
         st.error(f"Erro ao carregar dados de Servidores: {e}")
-        return None, None, None, None, None
+        return None, None, None, None, None, None
 
 @st.cache_data(show_spinner=False)
 def load_saude_data() -> Optional[pd.DataFrame]:
@@ -67,6 +80,7 @@ def load_all_data() -> dict:
             'secretarias': servidores_data[2],
             'cargos': servidores_data[3],
             'ministrantes': servidores_data[4],
+            'orgaos_parceiros': servidores_data[5] if len(servidores_data) > 5 else None,
         },
         'saude': {
             'dados': saude_data,
