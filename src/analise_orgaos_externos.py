@@ -28,9 +28,12 @@ for orgao in orgaos_interesse:
 # Verificar se há menção a Defensoria Pública ou Procuradoria do Estado
 print('=== VERIFICAÇÃO DE ÓRGÃOS PREVISTOS ===\n')
 
-# Verificar em todas as colunas de texto
-colunas_texto = ['orgao', 'orgao_outros', 'evento', 'local_realizacao']
+# Verificar em todas as colunas de texto (apenas as que existem no DataFrame)
+colunas_texto = [col for col in ['orgao', 'orgao_outros', 'evento', 'local_realizacao'] 
+                 if col in df.columns]
 orgaos_previstos = ['Defensoria', 'Procuradoria']
+
+print(f"Colunas disponíveis para busca: {colunas_texto}\n")
 
 for orgao_previsto in orgaos_previstos:
     encontrado = False
@@ -51,4 +54,7 @@ print('=== RESUMO GERAL DOS ÓRGÃOS EXTERNOS ===')
 print(f'Total de órgãos externos atendidos: {externos["orgao"].nunique()}')
 print(f'Total de participantes de órgãos externos: {len(externos)}')
 print(f'Total de certificados emitidos para órgãos externos: {len(externos[externos["certificado"] == "Sim"])}')
-print(f'Taxa geral de certificação órgãos externos: {len(externos[externos["certificado"] == "Sim"]) / len(externos) * 100:.2f}%')
+if len(externos) > 0:
+    print(f'Taxa geral de certificação órgãos externos: {len(externos[externos["certificado"] == "Sim"]) / len(externos) * 100:.2f}%')
+else:
+    print(f'Taxa geral de certificação órgãos externos: 0%')
