@@ -58,6 +58,23 @@ if df_inscricoes is None or df_avaliacoes is None:
     st.error("Erro ao carregar dados. Verifique se os arquivos Parquet foram gerados.")
     st.stop()
 
+# Anos disponíveis
+_data_col_ano = next(
+    (c for c in df_inscricoes.columns if 'data' in c.lower() or 'carimbo' in c.lower()),
+    None,
+)
+_anos_ad: list = []
+if 'ano' in df_inscricoes.columns:
+    _anos_ad = sorted(df_inscricoes['ano'].dropna().unique().tolist())
+elif _data_col_ano:
+    try:
+        _anos_ad = sorted(
+            pd.to_datetime(df_inscricoes[_data_col_ano], errors='coerce')
+            .dt.year.dropna().astype(int).unique().tolist()
+        )
+    except Exception:
+        _anos_ad = []
+
 # =========================
 # HEADER
 # =========================
@@ -114,7 +131,16 @@ st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
 # FILTROS
 # =========================
 st.markdown('<h3>🔍 Filtros</h3>', unsafe_allow_html=True)
-col_f1, col_f2 = st.columns(2)
+col_f0, col_f1, col_f2 = st.columns(3)
+
+with col_f0:
+    _ano_opts_ad = ["Todos os Anos"] + [str(a) for a in _anos_ad]
+    ano_selecionado_ad = st.selectbox(
+        "📅 Ano",
+        _ano_opts_ad,
+        index=0,
+        key="filtro_ano_ad",
+    )
 
 with col_f1:
     # Filtro por projeto de extensão
@@ -146,6 +172,21 @@ with col_f2:
 
 # Aplicar filtros
 df_inscricoes_filtrado = df_inscricoes.copy()
+if ano_selecionado_ad != "Todos os Anos":
+    if 'ano' in df_inscricoes_filtrado.columns:
+        df_inscricoes_filtrado = df_inscricoes_filtrado[
+            df_inscricoes_filtrado['ano'].astype(str) == str(ano_selecionado_ad)
+        ]
+    elif _data_col_ano:
+        try:
+            _anos_series = pd.to_datetime(
+                df_inscricoes_filtrado[_data_col_ano], errors='coerce'
+            ).dt.year.astype('Int64').astype(str)
+            df_inscricoes_filtrado = df_inscricoes_filtrado[
+                _anos_series == str(ano_selecionado_ad)
+            ]
+        except Exception:
+            pass
 if projeto_selecionado != "Todos" and projeto_col:
     df_inscricoes_filtrado = df_inscricoes_filtrado[df_inscricoes_filtrado[projeto_col] == projeto_selecionado]
 

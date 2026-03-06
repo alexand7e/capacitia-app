@@ -62,6 +62,10 @@ if df_dados is None:
     st.error("Erro ao carregar dados. Verifique se os arquivos Parquet foram gerados.")
     st.stop()
 
+# Anos disponíveis nos dados
+_anos_srv = sorted(df_dados['ano'].dropna().unique().tolist()) if 'ano' in df_dados.columns else []
+_tem_anos_srv = len(_anos_srv) > 1
+
 # Definir variável global para identificar formato dos dados
 is_parquet = 'cargo' in df_cargos_raw.columns if df_cargos_raw is not None else False
 
@@ -333,7 +337,17 @@ with col_btn2:
 # =========================
 st.markdown('<div <h3>🔍 Filtros Globais</h3>', unsafe_allow_html=True)
 
-col_f1, col_f2, col_f3 = st.columns(3)
+col_f0, col_f1, col_f2, col_f3 = st.columns(4)
+
+with col_f0:
+    _ano_opts = ["Todos os Anos"] + _anos_srv
+    ano_selecionado = st.selectbox(
+        "📅 Ano",
+        _ano_opts,
+        index=0,
+        key="filtro_ano",
+        help="Filtra todos os gráficos e métricas pelo ano selecionado.",
+    )
 
 with col_f1:
     # Filtro por tipo de curso
@@ -393,6 +407,18 @@ if st.sidebar.checkbox("Debug: Mostrar classificação de órgãos", False):
 
 # Começar com cópia dos dados originais
 df_dados_filtrado = df_dados.copy() if df_dados is not None else pd.DataFrame()
+
+# 0. Filtro por ANO (aplicado primeiro, antes de qualquer outro)
+if ano_selecionado != "Todos os Anos" and 'ano' in df_dados_filtrado.columns:
+    df_dados_filtrado = df_dados_filtrado[
+        df_dados_filtrado['ano'].astype(str) == str(ano_selecionado)
+    ]
+if ano_selecionado != "Todos os Anos" and 'ano' in df_visao.columns:
+    df_visao_filtrado = df_visao[
+        df_visao['ano'].astype(str) == str(ano_selecionado)
+    ].copy()
+else:
+    df_visao_filtrado = df_visao.copy()
 
 # 1. Filtro por tipo de curso/evento
 if tipo_selecionado != "Todos":
@@ -472,6 +498,8 @@ if tipo_selecionado != "Todos" and 'formato' in df_visao_filtrado.columns:
 
 # Exibir informação sobre filtros aplicados
 filtros_ativos = []
+if ano_selecionado != "Todos os Anos":
+    filtros_ativos.append(f"Ano: {ano_selecionado}")
 if tipo_selecionado != "Todos":
     filtros_ativos.append(f"Tipo: {tipo_selecionado}")
 if orgao_selecionado != "Todos":
@@ -551,7 +579,7 @@ with tab1:
             d = nz(grp_sec, ['Inscritos']).head(topn).sort_values('Inscritos')
             if d.empty:
                 st.info("Sem dados para plotar.")
-                fig = px.bar(pd.DataFrame({'Inscritos': []}), x='Inscritos', y=[])
+                fig = None
             else:
                 fig = px.bar(d, x='Inscritos', y=d.index, orientation="h", title="Top por Inscritos")
                 x_max = max(1, d['Inscritos'].max())
@@ -563,7 +591,7 @@ with tab1:
                                                .head(topn).sort_values('Certificados')
             if d.empty:
                 st.info("Sem dados para plotar.")
-                fig = px.bar(pd.DataFrame({'Certificados': []}), x='Certificados', y=[])
+                fig = None
             else:
                 fig = px.bar(d, x='Certificados', y=d.index, orientation="h", title="Top por Certificados")
                 x_max = max(1, d['Certificados'].max())
@@ -576,7 +604,7 @@ with tab1:
                                                     .head(topn).sort_values("Taxa de Permanência (%)")
             if d.empty:
                 st.info("Sem dados para plotar.")
-                fig = px.bar(pd.DataFrame({"Taxa de Permanência (%)": []}), x="Taxa de Permanência (%)", y=[])
+                fig = None
             else:
                 fig = px.bar(d, x="Taxa de Permanência (%)", y=d.index, orientation="h", title="Top por Permanência")
                 vals = d["Taxa de Permanência (%)"]
@@ -588,12 +616,13 @@ with tab1:
             d = nz(grp_sec, ['Inscritos', 'Certificados']).head(topn)
             if d.empty:
                 st.info("Sem dados para plotar.")
-                fig = px.bar(pd.DataFrame(columns=['Inscritos', 'Certificados']), x=['Inscritos', 'Certificados'], y=[])
+                fig = None
             else:
                 fig = px.bar(d, x=['Inscritos', 'Certificados'], y=d.index, orientation="h", barmode="group")
                 fig.update_traces(texttemplate="%{x}", textposition="outside", cliponaxis=False)
 
-        st.plotly_chart(style_fig(fig), use_container_width=True, key=f"vg_sec_lbl_{modo}_{topn}")
+        if fig is not None:
+            st.plotly_chart(style_fig(fig), use_container_width=True, key=f"vg_sec_lbl_{modo}_{topn}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with colB:
