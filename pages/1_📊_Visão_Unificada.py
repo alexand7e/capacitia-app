@@ -40,6 +40,28 @@ all_data = load_all_data()
 st.title("📊 Visão Unificada - CapacitIA")
 st.markdown("Análise consolidada de todos os módulos do CapacitIA")
 
+
+# ── Filtro de Ano ────────────────────────────────────────────
+_df_srv_vu = all_data['servidores']['dados']
+_anos_vu: list = []
+if _df_srv_vu is not None and 'ano' in _df_srv_vu.columns:
+    _anos_vu = sorted(_df_srv_vu['ano'].dropna().unique().tolist())
+
+if _anos_vu:
+    _ano_opts_vu = ["Todos os Anos"] + _anos_vu
+    ano_vu = st.selectbox(
+        "📅 Filtrar por Ano",
+        _ano_opts_vu,
+        index=0,
+        key="filtro_ano_vu",
+        help="Filtra os KPIs consolidados pelo ano selecionado.",
+    )
+    if ano_vu != "Todos os Anos" and _df_srv_vu is not None:
+        _df_srv_vu = _df_srv_vu[_df_srv_vu['ano'].astype(str) == str(ano_vu)]
+        all_data['servidores']['dados'] = _df_srv_vu
+else:
+    ano_vu = "Todos os Anos"
+
 # =========================
 # KPIs CONSOLIDADOS
 # =========================

@@ -53,6 +53,9 @@ if df_saude is None:
     st.error("Erro ao carregar dados. Verifique se os arquivos Parquet foram gerados.")
     st.stop()
 
+# Anos disponíveis
+_anos_saude = sorted(df_saude['ano'].dropna().unique().tolist()) if 'ano' in df_saude.columns else []
+
 # =========================
 # HEADER
 # =========================
@@ -101,7 +104,16 @@ st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
 # FILTROS
 # =========================
 st.markdown('<h3>🔍 Filtros</h3>', unsafe_allow_html=True)
-col_f1, col_f2 = st.columns(2)
+col_f0, col_f1, col_f2 = st.columns(3)
+
+with col_f0:
+    _ano_opts_s = ["Todos os Anos"] + _anos_saude
+    ano_selecionado_saude = st.selectbox(
+        "📅 Ano",
+        _ano_opts_s,
+        index=0,
+        key="filtro_ano_saude",
+    )
 
 with col_f1:
     if 'lote' in df_saude.columns:
@@ -129,6 +141,10 @@ with col_f2:
 
 # Aplicar filtros
 df_saude_filtrado = df_saude.copy()
+if ano_selecionado_saude != "Todos os Anos" and 'ano' in df_saude_filtrado.columns:
+    df_saude_filtrado = df_saude_filtrado[
+        df_saude_filtrado['ano'].astype(str) == str(ano_selecionado_saude)
+    ]
 if lote_selecionado != "Todos" and 'lote' in df_saude_filtrado.columns:
     df_saude_filtrado = df_saude_filtrado[df_saude_filtrado['lote'] == lote_selecionado]
 if data_selecionada != "Todas" and 'data' in df_saude_filtrado.columns:

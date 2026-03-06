@@ -1,32 +1,30 @@
 """
-Script de preparação: XLSX → CSV
-Converte o arquivo capacitia-dados.xlsx para o formato esperado pelo pipeline
-(src/process_csv_to_parquet.py).
+Script de preparação: CSV ou XLSX → CSV padronizado para o pipeline
 
-Uso:
-    python preparar_dados.py --input capacitia-dados.xlsx --ano 2026
-    python preparar_dados.py --input capacitia-dados.xlsx --ano 2025
-    python preparar_dados.py --input capacitia-dados.xlsx --ano todos
+Uso com CSV (dados já existentes):
+    uv run preparar_dados.py --input dados_gerais_capacitia.csv --ano 2026
+    uv run preparar_dados.py --input .data/raw/dados_gerais_capacitia.csv --ano 2025
+
+Uso com XLSX (múltiplos anos em abas separadas):
+    uv run preparar_dados.py --input capacitia-dados.xlsx --ano todos
+    uv run preparar_dados.py --input capacitia-dados.xlsx --ano 2026
 
 Saída:
-    .data/raw/dados_gerais_capacitia.csv
+    .data/raw/dados_gerais_capacitia.csv  (sobrescreve com coluna ANO adicionada)
 """
 
 import pandas as pd
 import argparse
 from pathlib import Path
 import sys
+import re
 
 # ============================================================
 # CONFIGURAÇÕES
 # ============================================================
 
-# Linha onde está o cabeçalho real (0-indexed)
-HEADER_ROW = 6
+HEADER_ROW = 6  # linha do cabeçalho real no XLSX (0-indexed)
 
-# Mapeamento: nome da coluna no Excel → nome esperado pelo pipeline
-# Ambos os anos têm as mesmas colunas, mas o pipeline espera ORGAO EXTERNO
-# que não existe no Excel — será inferido automaticamente
 COLUNAS_MAP = {
     "EVENTO":              "EVENTO",
     "FORMATO":             "FORMATO",
@@ -44,11 +42,8 @@ COLUNAS_MAP = {
     "SERVIDOR DO ESTADO":  "SERVIDOR DO ESTADO",
 }
 
-# Órgãos considerados externos (fora do governo estadual do Piauí)
-# Ajuste esta lista conforme necessário
 ORGAOS_EXTERNOS = {
-    "MPPI", "MP-PI", "MPE-PI",
-    "PRF",
+    "MPPI", "MP-PI", "MPE-PI", "PRF",
     "CÂMARA MUNICIPAL DE TERESINA", "CAMARA MUNICIPAL DE TERESINA",
     "DETRAN", "DETRAN-PI", "DETRAN/PI",
     "TRE", "TRF", "TRT",
@@ -58,91 +53,169 @@ ORGAOS_EXTERNOS = {
 }
 
 # ============================================================
-# FUNÇÕES
+# UTILITÁRIOS
 # ============================================================
 
-def ler_aba(caminho: Path, aba: str) -> pd.DataFrame:
-    """Lê uma aba do XLSX pulando o cabeçalho institucional."""
-    df = pd.read_excel(caminho, sheet_name=aba, header=HEADER_ROW, dtype=str)
+def _resolve_path(input_arg: str) -> Path:
+    """Tenta localizar o arquivo em múltiplos caminhos."""
+    candidates = [
+        Path(input_arg),
+        Path(".data") / "raw" / Path(input_arg).name,
+        Path(__file__).parent / input_arg,
+        Path(__file__).parent / ".data" / "raw" / Path(input_arg).name,
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return Path(input_arg)  # retorna original para exibir erro correto
+
+
+def _detect_sep(filepath: Path) -> str:
+    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+        first_line = f.readline()
+    return ";" if first_line.count(";") > first_line.count(",") else ","
+
+
+def _infer_year(event_name: str) -> str:
+    m = re.search(r"(202\d)", str(event_name))
+    return m.group(1) if m else ""
+
+
+def _inferir_orgao_externo(orgao_series: pd.Series) -> pd.Series:
+    return orgao_series.str.strip().str.upper().isin(ORGAOS_EXTERNOS).map({True: "Sim", False: "Não"})
+
+
+# ============================================================
+# LEITORES
+# ============================================================
+
+def ler_csv(caminho: Path, ano_fixo: str) -> pd.DataFrame:
+    """Lê CSV existente e garante a coluna ANO."""
+    sep = _detect_sep(caminho)
+    print(f"  Separador detectado: '{sep}'")
+
+    df = pd.read_csv(caminho, sep=sep, dtype=str, encoding="utf-8", engine="python")
     df = df.fillna("")
-    # Remover linhas completamente vazias
-    df = df[df.apply(lambda r: r.str.strip().ne("").any(), axis=1)]
-    # Remover linhas de totais/rodapé
-    df = df[~df.iloc[:, 0].str.upper().str.contains("TOTAL|SUBTOTAL", na=False)]
-    # Limpar espaços em todos os campos de texto
+    df.columns = df.columns.str.strip()
+
+    # Detectar e pular cabeçalho institucional (quando CSV vem direto do relatório)
+    primeira_col = str(df.columns[0]).upper()
+    if "GOVERNO" in primeira_col or "PIAUÍ" in primeira_col or "PIAUI" in primeira_col:
+        print("  Detectado cabeçalho institucional — buscando linha de colunas reais...")
+        for i, row in df.iterrows():
+            vals = [str(v).strip().upper() for v in row.values]
+            if "EVENTO" in vals and "FORMATO" in vals:
+                df.columns = [str(v).strip() for v in df.iloc[i].values]
+                df = df.iloc[i + 1:].reset_index(drop=True).fillna("")
+                break
+
+    # Limpar linhas vazias e de total
+    df = df[df.apply(lambda r: r.astype(str).str.strip().ne("").any(), axis=1)]
+    df = df[~df.iloc[:, 0].astype(str).str.upper().str.contains("TOTAL|SUBTOTAL", na=False)]
     df = df.apply(lambda col: col.str.strip() if col.dtype == object else col)
-    print(f"  [{aba}] {len(df)} registros lidos.")
+
+    print(f"  {len(df)} registros após limpeza.")
+
+    # --- Determinar ANO ---
+    if ano_fixo and ano_fixo not in ("todos", "inferir"):
+        df["ANO"] = ano_fixo
+        print(f"  ANO fixado: {ano_fixo}")
+    elif "ANO" in df.columns:
+        print(f"  Coluna ANO já presente: {sorted(df['ANO'].dropna().unique().tolist())}")
+    else:
+        evento_col = next((c for c in df.columns if c.upper() == "EVENTO"), None)
+        if evento_col:
+            df["ANO"] = df[evento_col].apply(_infer_year)
+            contagem = df["ANO"].value_counts().to_dict()
+            sem_ano  = (df["ANO"] == "").sum()
+            print(f"  Anos inferidos dos eventos: {contagem}")
+            if sem_ano:
+                print(f"  ⚠️  {sem_ano} registros sem ano detectado → usando '2025'")
+                df.loc[df["ANO"] == "", "ANO"] = "2025"
+        else:
+            df["ANO"] = "2025"
+            print("  ⚠️  Evento não encontrado — usando '2025' como padrão.")
+
     return df
 
 
-def inferir_orgao_externo(df: pd.DataFrame) -> pd.Series:
-    """
-    Infere a coluna ÓRGÃO EXTERNO com base no campo ÓRGÃO.
-    Retorna uma Series com 'Sim' ou 'Não'.
-    """
-    orgao = df["ÓRGÃO"].str.strip().str.upper()
-    return orgao.isin(ORGAOS_EXTERNOS).map({True: "Sim", False: "Não"})
+def ler_aba_xlsx(caminho: Path, aba: str, ano_str: str) -> pd.DataFrame:
+    """Lê uma aba do XLSX e adiciona coluna ANO."""
+    df = pd.read_excel(caminho, sheet_name=aba, header=HEADER_ROW, dtype=str)
+    df = df.fillna("")
+    df = df[df.apply(lambda r: r.astype(str).str.strip().ne("").any(), axis=1)]
+    df = df[~df.iloc[:, 0].astype(str).str.upper().str.contains("TOTAL|SUBTOTAL", na=False)]
+    df = df.apply(lambda col: col.str.strip() if col.dtype == object else col)
+    df["ANO"] = ano_str
+    print(f"  [{aba}] {len(df)} registros lidos → ANO={ano_str}")
+    return df
 
+
+# ============================================================
+# PADRONIZAÇÃO
+# ============================================================
 
 def padronizar(df: pd.DataFrame) -> pd.DataFrame:
-    """Garante que todas as colunas esperadas existem e estão na ordem certa."""
-    # Renomear conforme mapeamento (lida com variações de espaço/acento)
-    df = df.rename(columns=lambda c: c.strip())
+    """Normaliza colunas, adiciona ÓRGÃO EXTERNO e reordena."""
+    df = df.rename(columns=lambda c: str(c).strip())
 
-    # Verificar colunas faltantes
-    faltando = [c for c in COLUNAS_MAP.keys() if c not in df.columns]
+    faltando = [c for c in COLUNAS_MAP if c not in df.columns]
     if faltando:
-        print(f"  AVISO: Colunas não encontradas no Excel: {faltando}")
+        print(f"  ⚠️  Colunas ausentes (serão criadas vazias): {faltando}")
         for c in faltando:
             df[c] = ""
 
-    # Normalizar campo FORMATO (remove espaços extras, padroniza capitalização)
     if "FORMATO" in df.columns:
         df["FORMATO"] = df["FORMATO"].str.strip()
 
-    # Adicionar coluna ÓRGÃO EXTERNO (não existe no Excel, inferida)
-    df.insert(2, "ÓRGÃO EXTERNO", inferir_orgao_externo(df))
+    # ÓRGÃO EXTERNO: inferir se não existir
+    if "ÓRGÃO EXTERNO" not in df.columns:
+        orgao_col = next(
+            (c for c in df.columns if "ÓRGÃO" in c.upper() and "OUTRO" not in c.upper()),
+            None,
+        )
+        df["ÓRGÃO EXTERNO"] = (
+            _inferir_orgao_externo(df[orgao_col]) if orgao_col else "Não"
+        )
 
-    # Selecionar e reordenar colunas na ordem esperada pelo pipeline
-    ordem_final = [
-        "EVENTO", "FORMATO", "ÓRGÃO EXTERNO", "EIXO", "LOCAL DE REALIZAÇÃO",
+    ordem = [
+        "ANO", "EVENTO", "FORMATO", "ÓRGÃO EXTERNO", "EIXO", "LOCAL DE REALIZAÇÃO",
         "NOME", "CARGO", "CARGO OUTROS", "ÓRGÃO", "ÓRGÃO OUTROS",
-        "VÍNCULO", "VÍNCULO OUTROS", "CERTIFICADO", "CARGO DE GESTÃO", "SERVIDOR DO ESTADO"
+        "VÍNCULO", "VÍNCULO OUTROS", "CERTIFICADO", "CARGO DE GESTÃO", "SERVIDOR DO ESTADO",
     ]
-    df = df[[c for c in ordem_final if c in df.columns]]
+    return df[[c for c in ordem if c in df.columns]]
 
-    return df
 
+# ============================================================
+# SAÍDA E RESUMO
+# ============================================================
 
 def salvar_csv(df: pd.DataFrame, destino: Path):
-    """Salva o DataFrame como CSV no formato esperado pelo pipeline."""
     destino.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(destino, index=False, sep=";", encoding="utf-8")
-    print(f"\n✅ CSV salvo em: {destino}")
-    print(f"   Total de registros: {len(df)}")
-    print(f"   Colunas: {list(df.columns)}")
+    print(f"\n✅ CSV salvo em : {destino}")
+    print(f"   Registros    : {len(df)}")
+    print(f"   Colunas      : {list(df.columns)}")
 
 
 def resumo(df: pd.DataFrame):
-    """Imprime um resumo dos dados preparados."""
-    print("\n📊 Resumo dos dados:")
-    print(f"   Eventos únicos:   {df['EVENTO'].nunique()}")
-    print(f"   Órgãos únicos:    {df['ÓRGÃO'].nunique()}")
-    print(f"   Órgãos externos:  {(df['ÓRGÃO EXTERNO'] == 'Sim').sum()} registros")
-    print(f"   Certificados Sim: {(df['CERTIFICADO'].str.strip() == 'Sim').sum()}")
-    print(f"   Certificados Não: {(df['CERTIFICADO'].str.strip() == 'Não').sum()}")
-    
-    print("\n   Registros por FORMATO:")
-    for fmt, cnt in df["FORMATO"].value_counts().items():
-        print(f"     {fmt}: {cnt}")
+    print("\n📊 Resumo:")
+    anos = sorted(df["ANO"].unique()) if "ANO" in df.columns else ["?"]
+    for ano in anos:
+        sub  = df[df["ANO"] == ano] if "ANO" in df.columns else df
+        cert = (sub.get("CERTIFICADO", pd.Series()).str.strip() == "Sim").sum()
+        taxa = cert / len(sub) * 100 if len(sub) else 0
+        print(f"   {ano}: {len(sub):>5} inscritos | {cert:>4} certificados | {taxa:.1f}%")
 
-    print("\n   Órgãos marcados como EXTERNOS:")
-    externos = df[df["ÓRGÃO EXTERNO"] == "Sim"]["ÓRGÃO"].value_counts()
-    if externos.empty:
-        print("     (nenhum — revise a lista ORGAOS_EXTERNOS no script)")
-    else:
-        for org, cnt in externos.items():
-            print(f"     {org}: {cnt}")
+    ev_col  = next((c for c in df.columns if c.upper() == "EVENTO"), None)
+    org_col = next((c for c in df.columns if c.upper() == "ÓRGÃO" and "OUTRO" not in c.upper()), None)
+    if ev_col:
+        print(f"   Eventos únicos : {df[ev_col].nunique()}")
+    if org_col:
+        externos = df[df.get("ÓRGÃO EXTERNO", pd.Series("Não", index=df.index)) == "Sim"][org_col].value_counts()
+        print(f"   Órgãos externos: {len(externos)}")
+        for org, cnt in externos.head(8).items():
+            print(f"     • {org}: {cnt}")
 
 
 # ============================================================
@@ -150,47 +223,81 @@ def resumo(df: pd.DataFrame):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Prepara XLSX do CapacitIA para CSV do pipeline.")
-    parser.add_argument("--input",  required=True,  help="Caminho do arquivo XLSX")
-    parser.add_argument("--ano",    default="todos", help="Ano a processar: 2025, 2026 ou todos")
-    parser.add_argument("--output", default=".data/raw/dados_gerais_capacitia.csv",
-                        help="Caminho de saída do CSV")
+    parser = argparse.ArgumentParser(
+        description="Prepara CSV ou XLSX do CapacitIA para o pipeline.",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "--input", required=True,
+        help="Arquivo de entrada (.csv ou .xlsx). Pode ser apenas o nome do arquivo\n"
+             "se ele estiver em .data/raw/",
+    )
+    parser.add_argument(
+        "--ano", default="inferir",
+        help=(
+            "Ano dos dados:\n"
+            "  2025    → marca todos como 2025\n"
+            "  2026    → marca todos como 2026\n"
+            "  todos   → lê abas '2025 DADOS' e '2026 DADOS' (somente XLSX)\n"
+            "  inferir → extrai o ano do nome do evento (padrão)"
+        ),
+    )
+    parser.add_argument(
+        "--output", default=".data/raw/dados_gerais_capacitia.csv",
+        help="Destino do CSV (padrão: .data/raw/dados_gerais_capacitia.csv)",
+    )
     args = parser.parse_args()
 
-    caminho = Path(args.input)
+    caminho = _resolve_path(args.input)
     if not caminho.exists():
-        print(f"❌ Arquivo não encontrado: {caminho}")
+        print(f"❌ Arquivo não encontrado: '{args.input}'")
+        print("   Caminhos tentados:")
+        for p in [
+            Path(args.input),
+            Path(".data") / "raw" / Path(args.input).name,
+        ]:
+            print(f"     {p.resolve()}  {'✓' if p.exists() else '✗'}")
         sys.exit(1)
 
-    print(f"📂 Lendo: {caminho}")
-
-    # Determinar quais abas processar
-    if args.ano == "todos":
-        abas = ["2025 DADOS", "2026 DADOS"]
-    elif args.ano == "2025":
-        abas = ["2025 DADOS"]
-    elif args.ano == "2026":
-        abas = ["2026 DADOS"]
-    else:
-        print(f"❌ Ano inválido: {args.ano}. Use 2025, 2026 ou todos.")
-        sys.exit(1)
+    sufixo = caminho.suffix.lower()
+    print(f"📂 Arquivo: {caminho.resolve()}  (tipo: {sufixo})")
 
     frames = []
-    for aba in abas:
-        print(f"\n📋 Processando aba: {aba}")
-        df = ler_aba(caminho, aba)
-        df = padronizar(df)
-        frames.append(df)
+
+    if sufixo == ".csv":
+        ano_param = "inferir" if args.ano == "todos" else args.ano
+        if args.ano == "todos":
+            print("⚠️  --ano todos é para XLSX. Inferindo ano automaticamente do CSV...")
+        df = ler_csv(caminho, ano_param)
+        frames.append(padronizar(df))
+
+    elif sufixo in (".xlsx", ".xls"):
+        abas_anos = (
+            [("2025 DADOS", "2025"), ("2026 DADOS", "2026")]
+            if args.ano in ("todos", "inferir")
+            else [(f"{args.ano} DADOS", args.ano)]
+        )
+        for aba, ano_str in abas_anos:
+            try:
+                print(f"\n📋 Processando aba: '{aba}'")
+                df_aba = ler_aba_xlsx(caminho, aba, ano_str)
+                frames.append(padronizar(df_aba))
+            except Exception as e:
+                print(f"  ⚠️  Aba '{aba}' ignorada: {e}")
+        if not frames:
+            print("❌ Nenhuma aba processada com sucesso.")
+            sys.exit(1)
+    else:
+        print(f"❌ Formato não suportado: '{sufixo}'. Use .csv ou .xlsx")
+        sys.exit(1)
 
     df_final = pd.concat(frames, ignore_index=True)
-
     resumo(df_final)
     salvar_csv(df_final, Path(args.output))
 
-    print("\n✅ Pronto! Próximos passos:")
-    print("   1. python src\\process_csv_to_parquet.py")
-    print("   2. python src\\verify_results.py")
-    print("   3. streamlit run app.py")
+    print("\n✅ Próximos passos:")
+    print("   python src/process_csv_to_parquet.py")
+    print("   streamlit run app.py")
 
 
 if __name__ == "__main__":
