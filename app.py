@@ -160,11 +160,11 @@ def main():
         st.metric("Secretarias Envolvidas", secretarias_count)
 
     # ── Dica sobre a sidebar ───────────────────────────────────────────────
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.info(
-        "💡 **Dica:** todas as páginas também ficam disponíveis na **barra lateral esquerda** — "
-        "clique no `>` no canto superior esquerdo se ela estiver recolhida."
-    )
+    # st.markdown("<br>", unsafe_allow_html=True)
+    # st.info(
+    #     "💡 **Dica:** todas as páginas também ficam disponíveis na **barra lateral esquerda** — "
+    #     "clique no `>` no canto superior esquerdo se ela estiver recolhida."
+    # )
 
 
 if __name__ == "__main__":
