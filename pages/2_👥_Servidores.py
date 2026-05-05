@@ -421,13 +421,13 @@ else:
     df_visao_filtrado = df_visao.copy()
 
 # 1. Filtro por tipo de curso/evento
+TIPO_TO_FORMATO = {"Curso de IA": "Curso", "Masterclass": "Masterclass", "Workshop": "Workshop"}
 if tipo_selecionado != "Todos":
     df_cargos_ev_filtrado = df_cargos_ev[df_cargos_ev["Tipo"] == tipo_selecionado].copy()
-    # Aplicar filtro ao df_dados usando a coluna 'formato' que contém os tipos corretos
+    raw_formato = TIPO_TO_FORMATO.get(tipo_selecionado, tipo_selecionado)
     if 'formato' in df_dados_filtrado.columns:
-        df_dados_filtrado = df_dados_filtrado[df_dados_filtrado['formato'] == tipo_selecionado]
+        df_dados_filtrado = df_dados_filtrado[df_dados_filtrado['formato'] == raw_formato]
     elif 'evento' in df_dados_filtrado.columns:
-        # Fallback: usar evento se formato não existir
         eventos_tipo = df_dados_filtrado[df_dados_filtrado['evento'].str.contains(tipo_selecionado, case=False, na=False)]['evento'].unique()
         if len(eventos_tipo) > 0:
             df_dados_filtrado = df_dados_filtrado[df_dados_filtrado['evento'].isin(eventos_tipo)]
@@ -492,9 +492,9 @@ else:
 taxa_cert = (tot_cert / tot_insc * 100) if tot_insc > 0 else 0.0
 
 # Aplicar filtros ao df_visao se aplicável
-df_visao_filtrado = df_visao.copy()
 if tipo_selecionado != "Todos" and 'formato' in df_visao_filtrado.columns:
-    df_visao_filtrado = df_visao_filtrado[df_visao_filtrado['formato'].str.contains(tipo_selecionado, case=False, na=False)].copy()
+    raw_formato = TIPO_TO_FORMATO.get(tipo_selecionado, tipo_selecionado)
+    df_visao_filtrado = df_visao_filtrado[df_visao_filtrado['formato'] == raw_formato].copy()
 
 # Exibir informação sobre filtros aplicados
 filtros_ativos = []
