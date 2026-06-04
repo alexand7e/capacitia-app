@@ -4,10 +4,9 @@ import streamlit as st
 import sys
 from pathlib import Path
 
-# Adicionar o diretório raiz ao path para imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.utils.constants import COLORS
+from utils.constants import COLORS
 
 def render_kpi_card(label: str, value: str, icon: str = "", change: str = ""):
     """Renderiza um card de KPI estilizado."""

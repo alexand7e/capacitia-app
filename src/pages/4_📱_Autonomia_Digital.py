@@ -7,21 +7,20 @@ import plotly.express as px
 import plotly.io as pio
 import numpy as np
 import sys
-from datetime import datetime
 import re
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import io
 
-# Adicionar o diretório raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.loaders import load_autonomia_digital_data
-from src.utils.constants import DESCRIPTIONS, COLORS
+from data.loaders import load_autonomia_digital_data
+from utils.constants import DESCRIPTIONS, COLORS
+from utils.helpers import render_back_button, render_update_timestamp
+from utils.theme import setup_plotly_theme, load_main_css
 
-# =========================
-# CONFIG & THEME
-# =========================
+_PAGE = Path(__file__).parent.parent
+
 st.set_page_config(
     page_title="CapacitIA Autonomia Digital",
     page_icon="📱",
@@ -29,25 +28,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Plotly theme
-pio.templates["capacit_dark"] = pio.templates["plotly_dark"]
-pio.templates["capacit_dark"].layout.font.family = "Inter, Segoe UI, Roboto, Arial"
-pio.templates["capacit_dark"].layout.colorway = [
-    "#7DD3FC", "#34D399", "#FBBF24", "#F472B6", "#60A5FA", "#A78BFA", "#F87171"
-]
-pio.templates["capacit_dark"].layout.paper_bgcolor = "#0f1220"
-pio.templates["capacit_dark"].layout.plot_bgcolor = "#11142a"
-pio.templates["capacit_dark"].layout.hoverlabel = dict(
-    bgcolor="#0f1220", font_size=12, font_family="Inter, Segoe UI, Roboto, Arial"
-)
-pio.templates.default = "capacit_dark"
-
-# =========================
-# CSS GLOBAL
-# =========================
-with open("styles/main.css", "r", encoding="utf-8") as f:
-    css_content = f.read()
-st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+setup_plotly_theme()
+load_main_css(_PAGE)
 
 # =========================
 # CARREGAR DADOS
@@ -83,14 +65,9 @@ st.markdown(f"""
 <div style="color: {COLORS['muted']}; margin-bottom: 24px;">
 {DESCRIPTIONS['autonomia_digital'].strip()}
 </div>
-<div style="color: {COLORS['muted']}; font-size: 0.9rem;">
-Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-</div>
-""", unsafe_allow_html=True)
+{render_update_timestamp()}""", unsafe_allow_html=True)
 
-# Botão para voltar à home
-if st.button("🏠 Voltar à Home", key="btn_home_autonomia"):
-    st.switch_page("app.py")
+render_back_button(key="btn_home_autonomia")
 
 # =========================
 # KPIs PRINCIPAIS
@@ -223,7 +200,7 @@ with tab1:
                     xaxis_title=None,
                     yaxis_title=None
                 )
-                st.plotly_chart(fig, use_container_width=True, key="autonomia_projeto_bar")
+                st.plotly_chart(fig, width='stretch', key="autonomia_projeto_bar")
             else:
                 st.info("Sem dados para plotar.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -246,7 +223,7 @@ with tab1:
                     margin=dict(l=10, r=10, t=10, b=10),
                     legend=dict(orientation="v", y=0.5, yanchor="middle", x=1.02)
                 )
-                st.plotly_chart(fig_pie, use_container_width=True, key="autonomia_aposentados_pie")
+                st.plotly_chart(fig_pie, width='stretch', key="autonomia_aposentados_pie")
             else:
                 st.info("Sem dados para plotar.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -310,7 +287,7 @@ with tab1:
                     fig_wordcloud.savefig(img_buffer, format='png', facecolor='#0f1220', bbox_inches='tight', pad_inches=0)
                     img_buffer.seek(0)
                     
-                    st.image(img_buffer, use_container_width=True)
+                    st.image(img_buffer, width='stretch')
                     plt.close(fig_wordcloud)
                     
                     # Também mostrar gráfico de barras com top temas
@@ -334,7 +311,7 @@ with tab1:
                             font_color='#e6e7ee'
                         )
                         fig_temas.update_traces(marker_color='#7DD3FC')
-                        st.plotly_chart(fig_temas, use_container_width=True, key="autonomia_temas")
+                        st.plotly_chart(fig_temas, width='stretch', key="autonomia_temas")
                 else:
                     st.info("Sem dados suficientes para gerar nuvem de palavras.")
             else:
@@ -365,14 +342,14 @@ with tab2:
     if projeto_col:
         st.markdown("### Projetos de Extensão")
         projetos_contagem = df_inscricoes_filtrado[projeto_col].value_counts()
-        st.dataframe(projetos_contagem.reset_index(), use_container_width=True)
+        st.dataframe(projetos_contagem.reset_index(), width='stretch')
     
     # Temas de dificuldade mais comuns
     if dificuldade_col:
         st.markdown("### Temas de Dificuldade Mais Comuns")
         temas_df = df_inscricoes_filtrado[dificuldade_col].value_counts().head(10).reset_index()
         temas_df.columns = ['Tema', 'Quantidade']
-        st.dataframe(temas_df, use_container_width=True)
+        st.dataframe(temas_df, width='stretch')
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -403,7 +380,7 @@ with tab3:
                 height=400,
                 margin=dict(l=10, r=10, t=50, b=10)
             )
-            st.plotly_chart(fig_dist, use_container_width=True, key="autonomia_avaliacao_dist")
+            st.plotly_chart(fig_dist, width='stretch', key="autonomia_avaliacao_dist")
     
     # Avaliações por dimensão
     st.markdown("### Avaliações por Dimensão")
@@ -467,12 +444,12 @@ with tab3:
                 fig_wordcloud_sug.savefig(img_buffer_sug, format='png', facecolor='#0f1220', bbox_inches='tight', pad_inches=0)
                 img_buffer_sug.seek(0)
                 
-                st.image(img_buffer_sug, use_container_width=True)
+                st.image(img_buffer_sug, width='stretch')
                 plt.close(fig_wordcloud_sug)
             
             # Tabela com sugestões (opcional, pode ser colapsada)
             with st.expander("📋 Ver todas as sugestões em texto"):
-                st.dataframe(sugestoes_validas.reset_index(drop=True), use_container_width=True, height=300)
+                st.dataframe(sugestoes_validas.reset_index(drop=True), width='stretch', height=300)
         else:
             st.info("Nenhuma sugestão registrada.")
     
@@ -527,7 +504,7 @@ with tab4:
             xaxis_title="Percentual",
             yaxis_title=None
         )
-        st.plotly_chart(fig_aprend, use_container_width=True, key="autonomia_aprendizados")
+        st.plotly_chart(fig_aprend, width='stretch', key="autonomia_aprendizados")
         
         # Matriz colorida (heatmap) para detalhamento
         st.markdown("### Detalhamento")
@@ -552,11 +529,11 @@ with tab4:
             xaxis=dict(side='bottom')
         )
         fig_heatmap.update_traces(textfont_size=12, textfont_color='white')
-        st.plotly_chart(fig_heatmap, use_container_width=True, key="autonomia_heatmap")
+        st.plotly_chart(fig_heatmap, width='stretch', key="autonomia_heatmap")
         
         # Tabela também disponível (colapsada)
         with st.expander("📊 Ver dados em tabela"):
-            st.dataframe(df_aprendizados, use_container_width=True)
+            st.dataframe(df_aprendizados, width='stretch')
     else:
         st.info("Sem dados de aprendizados disponíveis.")
     
@@ -607,11 +584,11 @@ with tab4:
                     paper_bgcolor='#0f1220',
                     font_color='#e6e7ee'
                 )
-                st.plotly_chart(fig_treemap, use_container_width=True, key="autonomia_extras_treemap")
+                st.plotly_chart(fig_treemap, width='stretch', key="autonomia_extras_treemap")
             
             # Tabela também disponível (colapsada)
             with st.expander("📋 Ver todos os aprendizados extras em texto"):
-                st.dataframe(extras_validos.reset_index(drop=True), use_container_width=True, height=300)
+                st.dataframe(extras_validos.reset_index(drop=True), width='stretch', height=300)
         else:
             st.info("Nenhum aprendizado extra registrado.")
     

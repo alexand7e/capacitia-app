@@ -1,16 +1,11 @@
 """
-Script de preparação: CSV ou XLSX → CSV padronizado para o pipeline
+DEPRECATED: Use src/process_excel_to_parquet.py em vez deste script.
 
-Uso com CSV (dados já existentes):
-    uv run preparar_dados.py --input dados_gerais_capacitia.csv --ano 2026
-    uv run preparar_dados.py --input .data/raw/dados_gerais_capacitia.csv --ano 2025
+Este script foi substituído pelo pipeline unificado que lê o Excel
+consolidado (archive/relatorio/capacitia-dados.xlsx) e já executa
+todo o pipeline Parquet automaticamente.
 
-Uso com XLSX (múltiplos anos em abas separadas):
-    uv run preparar_dados.py --input capacitia-dados.xlsx --ano todos
-    uv run preparar_dados.py --input capacitia-dados.xlsx --ano 2026
-
-Saída:
-    .data/raw/dados_gerais_capacitia.csv  (sobrescreve com coluna ANO adicionada)
+Mantido apenas para referência.
 """
 
 import pandas as pd

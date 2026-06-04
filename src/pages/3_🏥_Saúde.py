@@ -6,17 +6,16 @@ import pandas as pd
 import plotly.express as px
 import plotly.io as pio
 import sys
-from datetime import datetime
 
-# Adicionar o diretório raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.loaders import load_saude_data
-from src.utils.constants import DESCRIPTIONS, COLORS
+from data.loaders import load_saude_data
+from utils.constants import DESCRIPTIONS, COLORS
+from utils.helpers import render_back_button, render_update_timestamp
+from utils.theme import setup_plotly_theme, load_main_css
 
-# =========================
-# CONFIG & THEME
-# =========================
+_PAGE = Path(__file__).parent.parent
+
 st.set_page_config(
     page_title="CapacitIA Saúde",
     page_icon="🏥",
@@ -24,25 +23,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Plotly theme
-pio.templates["capacit_dark"] = pio.templates["plotly_dark"]
-pio.templates["capacit_dark"].layout.font.family = "Inter, Segoe UI, Roboto, Arial"
-pio.templates["capacit_dark"].layout.colorway = [
-    "#7DD3FC", "#34D399", "#FBBF24", "#F472B6", "#60A5FA", "#A78BFA", "#F87171"
-]
-pio.templates["capacit_dark"].layout.paper_bgcolor = "#0f1220"
-pio.templates["capacit_dark"].layout.plot_bgcolor = "#11142a"
-pio.templates["capacit_dark"].layout.hoverlabel = dict(
-    bgcolor="#0f1220", font_size=12, font_family="Inter, Segoe UI, Roboto, Arial"
-)
-pio.templates.default = "capacit_dark"
-
-# =========================
-# CSS GLOBAL
-# =========================
-with open("styles/main.css", "r", encoding="utf-8") as f:
-    css_content = f.read()
-st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+setup_plotly_theme()
+load_main_css(_PAGE)
 
 # =========================
 # CARREGAR DADOS
@@ -64,14 +46,9 @@ st.markdown(f"""
 <div style="color: {COLORS['muted']}; margin-bottom: 24px;">
 {DESCRIPTIONS['saude'].strip()}
 </div>
-<div style="color: {COLORS['muted']}; font-size: 0.9rem;">
-Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-</div>
-""", unsafe_allow_html=True)
+{render_update_timestamp()}""", unsafe_allow_html=True)
 
-# Botão para voltar à home
-if st.button("🏠 Voltar à Home", key="btn_home_saude"):
-    st.switch_page("app.py")
+render_back_button(key="btn_home_saude")
 
 # =========================
 # KPIs PRINCIPAIS
@@ -183,7 +160,7 @@ with tab1:
                     xaxis_title=None,
                     yaxis_title=None
                 )
-                st.plotly_chart(fig, use_container_width=True, key="saude_lote_bar")
+                st.plotly_chart(fig, width='stretch', key="saude_lote_bar")
             else:
                 st.info("Sem dados para plotar.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -206,7 +183,7 @@ with tab1:
                     margin=dict(l=10, r=10, t=10, b=10),
                     legend=dict(orientation="v", y=0.5, yanchor="middle", x=1.02)
                 )
-                st.plotly_chart(fig_pie, use_container_width=True, key="saude_lote_pie")
+                st.plotly_chart(fig_pie, width='stretch', key="saude_lote_pie")
             else:
                 st.info("Sem dados para plotar.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -242,7 +219,7 @@ with tab1:
             )
             # Rotacionar labels do eixo X para melhor leitura
             fig_timeline.update_xaxes(tickangle=-45)
-            st.plotly_chart(fig_timeline, use_container_width=True, key="saude_timeline")
+            st.plotly_chart(fig_timeline, width='stretch', key="saude_timeline")
         else:
             st.info("Sem dados para visualização.")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -296,7 +273,7 @@ with tab3:
                     xaxis_title="Data",
                     yaxis_title="Participantes"
                 )
-                st.plotly_chart(fig_evol, use_container_width=True, key="saude_evolucao")
+                st.plotly_chart(fig_evol, width='stretch', key="saude_evolucao")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -321,5 +298,5 @@ with tab3:
                 xaxis_title="Lote",
                 yaxis_title="Total de Participantes"
             )
-            st.plotly_chart(fig_comp, use_container_width=True, key="saude_comparativo")
+            st.plotly_chart(fig_comp, width='stretch', key="saude_comparativo")
     st.markdown('</div>', unsafe_allow_html=True)

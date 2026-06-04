@@ -8,16 +8,16 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import numpy as np
 import sys
-from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.loaders import load_servidores_data
-from src.utils.constants import COLORS
+from data.loaders import load_servidores_data
+from utils.constants import COLORS
+from utils.helpers import style_fig, render_back_button, render_update_timestamp
+from utils.theme import setup_plotly_theme, load_main_css
 
-# =========================
-# CONFIG & THEME
-# =========================
+_PAGE = Path(__file__).parent.parent
+
 st.set_page_config(
     page_title="Evolução Temporal - CapacitIA",
     page_icon="📈",
@@ -25,36 +25,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-pio.templates["capacit_dark"] = pio.templates["plotly_dark"]
-pio.templates["capacit_dark"].layout.font.family = "Inter, Segoe UI, Roboto, Arial"
-pio.templates["capacit_dark"].layout.colorway = [
-    "#7DD3FC", "#34D399", "#FBBF24", "#F472B6", "#60A5FA", "#A78BFA", "#F87171"
-]
-pio.templates["capacit_dark"].layout.paper_bgcolor = "#0f1220"
-pio.templates["capacit_dark"].layout.plot_bgcolor  = "#11142a"
-pio.templates["capacit_dark"].layout.hoverlabel = dict(
-    bgcolor="#0f1220", font_size=12, font_family="Inter, Segoe UI, Roboto, Arial"
-)
-pio.templates.default = "capacit_dark"
-
-with open("styles/main.css", "r", encoding="utf-8") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+setup_plotly_theme()
+load_main_css(_PAGE)
 
 
 # =========================
 # HELPERS
 # =========================
-def style_fig(fig, height=420):
-    fig.update_layout(
-        height=height,
-        margin=dict(l=10, r=10, t=50, b=10),
-        xaxis_title=None,
-        yaxis_title=None,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-    )
-    return fig
-
-
 def fmt_br(n) -> str:
     return f"{int(n):,}".replace(",", ".")
 
@@ -106,7 +83,7 @@ def load_evolucao():
         if "ano" not in df.columns:
             st.warning(
                 "⚠️ Coluna **ano** não encontrada nos dados. "
-                "Execute novamente `preparar_dados.py` e `process_csv_to_parquet.py` "
+                "Execute novamente `process_excel_to_parquet.py` "
                 "para habilitar a linha do tempo completa. "
                 "Exibindo dados do ano corrente como fallback."
             )
@@ -203,17 +180,16 @@ st.markdown(
     f'<p style="color:{COLORS["muted"]}; margin-bottom:4px;">'
     f"Acompanhe o crescimento e as mudanças do programa ao longo dos anos. "
     f"Anos disponíveis: <b style='color:{COLORS['primary']}'>{' · '.join(anos_disponiveis)}</b>"
-    f"</p>"
-    f'<p style="color:{COLORS["muted"]}; font-size:0.85rem;">Atualizado em {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>',
+    f"</p>",
     unsafe_allow_html=True,
 )
+render_update_timestamp()
 
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
-    if st.button("🏠 Voltar à Home", use_container_width=True):
-        st.switch_page("app.py")
+    render_back_button(key="btn_home_evolucao")
 with col_btn2:
-    if st.button("👥 Ver Servidores", use_container_width=True):
+    if st.button("👥 Ver Servidores", width='stretch'):
         st.switch_page("pages/2_👥_Servidores.py")
 
 st.markdown('<div class="sep"></div>', unsafe_allow_html=True)
@@ -304,7 +280,7 @@ with tab1:
             textposition="outside",
         )
         fig_bar.update_layout(barmode="group", xaxis=dict(type="category"))
-        st.plotly_chart(style_fig(fig_bar, 400), use_container_width=True, key="tl_bar_geral")
+        st.plotly_chart(style_fig(fig_bar, 400), width='stretch', key="tl_bar_geral")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_r:
@@ -329,7 +305,7 @@ with tab1:
             name="Taxa Evasão",
         )
         fig_taxa.update_layout(yaxis=dict(ticksuffix="%"), xaxis=dict(type="category"))
-        st.plotly_chart(style_fig(fig_taxa, 400), use_container_width=True, key="tl_linha_taxa")
+        st.plotly_chart(style_fig(fig_taxa, 400), width='stretch', key="tl_linha_taxa")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Linha do tempo de eventos e órgãos
@@ -342,7 +318,7 @@ with tab1:
         )
         fig_ev.update_traces(textposition="outside", cliponaxis=False)
         fig_ev.update_layout(xaxis=dict(type="category"))
-        st.plotly_chart(style_fig(fig_ev, 340), use_container_width=True, key="tl_ev")
+        st.plotly_chart(style_fig(fig_ev, 340), width='stretch', key="tl_ev")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_org:
@@ -353,7 +329,7 @@ with tab1:
         )
         fig_org.update_traces(textposition="outside", cliponaxis=False)
         fig_org.update_layout(xaxis=dict(type="category"))
-        st.plotly_chart(style_fig(fig_org, 340), use_container_width=True, key="tl_org")
+        st.plotly_chart(style_fig(fig_org, 340), width='stretch', key="tl_org")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Tabela de resumo anual
@@ -368,7 +344,7 @@ with tab1:
             "total_orgaos": "Órgãos",
         }
         df_show = geral[[c for c in display_cols if c in geral.columns]].rename(columns=display_cols)
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
+        st.dataframe(df_show, width='stretch', hide_index=True)
 
     # Crescimento percentual (waterfall-style)
     if tem_comparacao:
@@ -397,7 +373,7 @@ with tab1:
             fig_cresc.add_hline(y=0, line_dash="dot", line_color="#7780a1")
             fig_cresc.update_traces(texttemplate="%{y:+.1f}%", textposition="outside", cliponaxis=False)
             fig_cresc.update_yaxes(ticksuffix="%")
-            st.plotly_chart(style_fig(fig_cresc, 420), use_container_width=True, key="tl_cresc")
+            st.plotly_chart(style_fig(fig_cresc, 420), width='stretch', key="tl_cresc")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -421,7 +397,7 @@ with tab2:
                 labels={"n_inscritos": "Inscritos", "formato": "Formato", "ano": "Ano"},
             )
             fig_fmt.update_traces(texttemplate="%{y}", textposition="outside", cliponaxis=False)
-            st.plotly_chart(style_fig(fig_fmt, 400), use_container_width=True, key="tl_fmt_bar")
+            st.plotly_chart(style_fig(fig_fmt, 400), width='stretch', key="tl_fmt_bar")
             st.markdown('</div>', unsafe_allow_html=True)
 
         with col_b:
@@ -434,7 +410,7 @@ with tab2:
             )
             fig_fmt_taxa.update_yaxes(ticksuffix="%")
             fig_fmt_taxa.update_layout(xaxis=dict(type="category"))
-            st.plotly_chart(style_fig(fig_fmt_taxa, 400), use_container_width=True, key="tl_fmt_taxa")
+            st.plotly_chart(style_fig(fig_fmt_taxa, 400), width='stretch', key="tl_fmt_taxa")
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Heatmap: formato × ano (inscritos)
@@ -449,7 +425,7 @@ with tab2:
         )
         fig_heat.update_traces(textfont_size=13)
         fig_heat.update_layout(xaxis=dict(type="category"))
-        st.plotly_chart(style_fig(fig_heat, 300), use_container_width=True, key="tl_fmt_heat")
+        st.plotly_chart(style_fig(fig_heat, 300), width='stretch', key="tl_fmt_heat")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -483,7 +459,7 @@ with tab3:
                 labels={"n_inscritos": "Inscritos", "orgao": "Órgão"},
             )
             fig_org.update_traces(texttemplate="%{x}", textposition="outside", cliponaxis=False)
-            st.plotly_chart(style_fig(fig_org, 520), use_container_width=True, key="tl_org_bar")
+            st.plotly_chart(style_fig(fig_org, 520), width='stretch', key="tl_org_bar")
             st.markdown('</div>', unsafe_allow_html=True)
 
         with col_b:
@@ -496,7 +472,7 @@ with tab3:
             )
             fig_org_taxa.update_traces(texttemplate="%{x:.1f}%", textposition="outside", cliponaxis=False)
             fig_org_taxa.update_xaxes(ticksuffix="%")
-            st.plotly_chart(style_fig(fig_org_taxa, 520), use_container_width=True, key="tl_org_taxa")
+            st.plotly_chart(style_fig(fig_org_taxa, 520), width='stretch', key="tl_org_taxa")
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Órgãos novos vs recorrentes (só se há 2+ anos)
@@ -524,7 +500,7 @@ with tab3:
             )
             fig_nov.update_traces(texttemplate="%{y}", textposition="inside")
             fig_nov.update_layout(xaxis=dict(type="category"))
-            st.plotly_chart(style_fig(fig_nov, 340), use_container_width=True, key="tl_org_novos")
+            st.plotly_chart(style_fig(fig_nov, 340), width='stretch', key="tl_org_novos")
             st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -554,7 +530,7 @@ with tab4:
             labels={"n_inscritos": "Inscritos", "cargo": "Cargo"},
         )
         fig_cargo.update_traces(texttemplate="%{x}", textposition="outside", cliponaxis=False)
-        st.plotly_chart(style_fig(fig_cargo, 540), use_container_width=True, key="tl_cargo_bar")
+        st.plotly_chart(style_fig(fig_cargo, 540), width='stretch', key="tl_cargo_bar")
         st.markdown('</div>', unsafe_allow_html=True)
 
         # Heatmap de cargos × ano
@@ -567,7 +543,7 @@ with tab4:
         )
         fig_heat_c.update_traces(textfont_size=12)
         fig_heat_c.update_layout(xaxis=dict(type="category"))
-        st.plotly_chart(style_fig(fig_heat_c, 420), use_container_width=True, key="tl_cargo_heat")
+        st.plotly_chart(style_fig(fig_heat_c, 420), width='stretch', key="tl_cargo_heat")
         st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -592,7 +568,7 @@ with tab5:
             )
             fig_eixo.update_traces(texttemplate="%{y}", textposition="outside", cliponaxis=False)
             fig_eixo.update_layout(xaxis=dict(type="category"))
-            st.plotly_chart(style_fig(fig_eixo, 420), use_container_width=True, key="tl_eixo_bar")
+            st.plotly_chart(style_fig(fig_eixo, 420), width='stretch', key="tl_eixo_bar")
             st.markdown('</div>', unsafe_allow_html=True)
 
         with col_b:
@@ -609,7 +585,7 @@ with tab5:
                 texttemplate="<b>%{label}</b><br>%{value}",
                 textposition="middle center",
             )
-            st.plotly_chart(style_fig(fig_eixo_tree, 420), use_container_width=True, key="tl_eixo_tree")
+            st.plotly_chart(style_fig(fig_eixo_tree, 420), width='stretch', key="tl_eixo_tree")
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Heatmap: eixo × ano
@@ -622,7 +598,7 @@ with tab5:
         )
         fig_heat_e.update_traces(textfont_size=13)
         fig_heat_e.update_layout(xaxis=dict(type="category"))
-        st.plotly_chart(style_fig(fig_heat_e, 300), use_container_width=True, key="tl_eixo_heat")
+        st.plotly_chart(style_fig(fig_heat_e, 300), width='stretch', key="tl_eixo_heat")
         st.markdown('</div>', unsafe_allow_html=True)
 
 

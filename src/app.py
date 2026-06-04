@@ -2,13 +2,12 @@
 
 import streamlit as st
 from pathlib import Path
-import sys
 
-sys.path.insert(0, str(Path(__file__).parent))
+from data.loaders import load_all_data
+from components.module_cards import render_module_card
+from utils.constants import TEXTS, DESCRIPTIONS, COLORS
 
-from src.data.loaders import load_all_data
-from src.components.module_cards import render_module_card
-from src.utils.constants import TEXTS, DESCRIPTIONS, COLORS
+_BASE = Path(__file__).parent
 
 st.set_page_config(
     page_title="CapacitIA - Plataforma Unificada",
@@ -17,11 +16,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",   # ← sidebar aberta para o usuário ver as páginas
 )
 
-with open("styles/main.css", "r", encoding="utf-8") as f:
+with open(_BASE / "styles" / "main.css", "r", encoding="utf-8") as f:
     css_content = f.read()
 
 try:
-    with open("styles/home.css", "r", encoding="utf-8") as f:
+    with open(_BASE / "styles" / "home.css", "r", encoding="utf-8") as f:
         home_css = f.read()
 except FileNotFoundError:
     home_css = ""
@@ -108,7 +107,7 @@ def main():
     with nav1:
         if st.button(
             "📊 Visão Unificada — Todos os Módulos",
-            use_container_width=True,
+            width='stretch',
             type="primary",
             key="btn_visao_unificada",
         ):
@@ -117,7 +116,7 @@ def main():
     with nav2:
         if st.button(
             "📈 Evolução Temporal — Linha do Tempo",
-            use_container_width=True,
+            width='stretch',
             type="primary",
             key="btn_evolucao",
         ):

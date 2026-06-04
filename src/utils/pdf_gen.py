@@ -56,7 +56,7 @@ def header_footer_capacitia(canvas, doc):
         from reportlab.lib.utils import ImageReader
         
         # Caminho para a imagem de fundo
-        img_path = Path("styles") / "fundo.png"
+        img_path = Path(__file__).parent.parent / "styles" / "fundo.png"
         
         if img_path.exists():
             img = ImageReader(str(img_path))

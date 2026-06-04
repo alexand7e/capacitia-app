@@ -2,7 +2,6 @@
 
 import unicodedata
 import re
-from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import plotly.express as px
@@ -11,19 +10,19 @@ import streamlit as st
 import numpy as np
 import sys
 
-# Adicionar o diretório raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.loaders import load_servidores_data
-from src.utils.constants import DESCRIPTIONS, COLORS
-from src.utils.helpers import (
+from data.loaders import load_servidores_data
+from utils.constants import DESCRIPTIONS, COLORS
+from utils.helpers import (
     fmt_int_br, _col_like, _normalize_org, drop_empty_labels, nz,
-    _parse_ptbr_number, _find_header_row, clean_secretarias
+    _parse_ptbr_number, _find_header_row, clean_secretarias,
+    style_fig, render_back_button, render_update_timestamp,
 )
+from utils.theme import setup_plotly_theme, load_main_css
 
-# =========================
-# CONFIG & THEME
-# =========================
+_PAGE = Path(__file__).parent.parent
+
 st.set_page_config(
     page_title="CapacitIA Servidores",
     page_icon="👥",
@@ -31,27 +30,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Plotly theme
-pio.templates["capacit_dark"] = pio.templates["plotly_dark"]
-pio.templates["capacit_dark"].layout.font.family = "Inter, Segoe UI, Roboto, Arial"
-pio.templates["capacit_dark"].layout.colorway = [
-    "#7DD3FC", "#34D399", "#FBBF24", "#F472B6", "#60A5FA", "#A78BFA", "#F87171"
-]
-pio.templates["capacit_dark"].layout.paper_bgcolor = "#0f1220"
-pio.templates["capacit_dark"].layout.plot_bgcolor = "#11142a"
-pio.templates["capacit_dark"].layout.hoverlabel = dict(
-    bgcolor="#0f1220", font_size=12, font_family="Inter, Segoe UI, Roboto, Arial"
-)
-pio.templates.default = "capacit_dark"
-
-# =========================
-# CSS GLOBAL
-# =========================
-# Carrega o CSS principal do arquivo externo
-with open("styles/main.css", "r", encoding="utf-8") as f:
-    css_content = f.read()
-
-st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+setup_plotly_theme()
+load_main_css(_PAGE)
 
 # =========================
 # DATA LOAD
@@ -72,17 +52,10 @@ is_parquet = 'cargo' in df_cargos_raw.columns if df_cargos_raw is not None else 
 # =========================
 # HELPERS
 # =========================
-def style_fig(fig, height=420):
-    fig.update_layout(
-        height=height, margin=dict(l=10, r=10, t=50, b=10),
-        xaxis_title=None, yaxis_title=None,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0)
-    ); return fig
-
 def df_panel(df: pd.DataFrame, title: str, key: str, max_rows: int = 22, min_h: int = 260, max_h: int = 640):
     st.markdown(f'<div class="panel"><h3>{title}</h3>', unsafe_allow_html=True)
     h = min(max(min_h, 60 + 28 * min(len(df), max_rows)), max_h)
-    st.dataframe(df, use_container_width=True, height=h)
+    st.dataframe(df, width='stretch', height=h)
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -281,19 +254,15 @@ st.markdown(f"""
 <div style="color: {COLORS['muted']}; margin-bottom: 24px;">
 {DESCRIPTIONS['servidores'].strip()}
 </div>
-<div style="color: {COLORS['muted']}; font-size: 0.9rem;">
-Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-</div>
-""", unsafe_allow_html=True)
+{render_update_timestamp()}""", unsafe_allow_html=True)
 
 # Botões de ação
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
-    if st.button("🏠 Voltar à Home", key="btn_home_servidores", use_container_width=True):
-        st.switch_page("app.py")
+    render_back_button(key="btn_home_servidores")
 
 with col_btn2:
-    if st.button("📄 Gerar Relatório PDF", key="btn_gerar_pdf", use_container_width=True, type="primary"):
+    if st.button("📄 Gerar Relatório PDF", key="btn_gerar_pdf", width='stretch', type="primary"):
         with st.spinner("Gerando relatório PDF..."):
             try:
                 from src.utils.pdf_gen import gerar_relatorio_capacitia
@@ -622,7 +591,7 @@ with tab1:
                 fig.update_traces(texttemplate="%{x}", textposition="outside", cliponaxis=False)
 
         if fig is not None:
-            st.plotly_chart(style_fig(fig), use_container_width=True, key=f"vg_sec_lbl_{modo}_{topn}")
+            st.plotly_chart(style_fig(fig), width='stretch', key=f"vg_sec_lbl_{modo}_{topn}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with colB:
@@ -637,7 +606,7 @@ with tab1:
                 x_max2 = max(1, d["Inscritos"].max())
                 fig2.update_traces(text=d["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
                 fig2.update_xaxes(range=[0, x_max2 * 1.15])
-                st.plotly_chart(style_fig(fig2), use_container_width=True, key=f"vg_cargo_top_lbl_{topn}")
+                st.plotly_chart(style_fig(fig2), width='stretch', key=f"vg_cargo_top_lbl_{topn}")
         else:
             st.info("Aba 'CARGOS' vazia ou inválida.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -651,7 +620,7 @@ with tab1:
             st.info("Sem dados para montar o funil.")
         else:
             fig_funil = px.funnel(funil_df, x="Total", y="Etapa", title=None)
-            st.plotly_chart(style_fig(fig_funil, height=360), use_container_width=True, key="vg_funnel")
+            st.plotly_chart(style_fig(fig_funil, height=360), width='stretch', key="vg_funnel")
     else:
         st.info("Sem dados para montar o funil.")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -683,7 +652,7 @@ with tab2:
                 x_max = max(1, top_df["Inscritos"].max())
                 fig_rank.update_traces(text=top_df["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
                 fig_rank.update_xaxes(range=[0, x_max * 1.15])
-                st.plotly_chart(style_fig(fig_rank, height=460), use_container_width=True, key=f"t2_cargos_rank_{topn}")
+                st.plotly_chart(style_fig(fig_rank, height=460), width='stretch', key=f"t2_cargos_rank_{topn}")
         else:
             st.info("Sem dados para o ranking.")
 
@@ -699,7 +668,7 @@ with tab2:
                 fig_pie = px.pie(top_part, values="Inscritos", names="Cargo", hole=0.55)
                 fig_pie.update_traces(textinfo="percent", textposition="inside", insidetextorientation="radial")
                 fig_pie.update_layout(legend=dict(orientation="v", y=0.5, yanchor="middle", x=1.02))
-                st.plotly_chart(style_fig(fig_pie, height=460), use_container_width=True, key=f"t2_cargos_pie_{topn}")
+                st.plotly_chart(style_fig(fig_pie, height=460), width='stretch', key=f"t2_cargos_pie_{topn}")
         else:
             st.info("Sem dados para o donut.")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -718,7 +687,7 @@ with tab2:
             else:
                 fig_stacked = px.bar(stacked_df, x=cols_presentes, y=stacked_df.index, orientation="h", barmode="stack")
                 fig_stacked.update_traces(texttemplate="%{x:.0f}", textposition="inside", insidetextanchor="middle")
-                st.plotly_chart(style_fig(fig_stacked), use_container_width=True, key=f"t2_cargos_stacked_{topn}")
+                st.plotly_chart(style_fig(fig_stacked), width='stretch', key=f"t2_cargos_stacked_{topn}")
         else:
             st.info("Tipos selecionados não possuem dados.")
     else:
@@ -763,7 +732,7 @@ with tab2:
             x_max = max(1, serie["Inscritos"].max())
             fig_series.update_traces(text=serie["Inscritos"], texttemplate="%{x}", textposition="outside", cliponaxis=False)
             fig_series.update_xaxes(range=[0, x_max * 1.15])
-            st.plotly_chart(style_fig(fig_series, height=520), use_container_width=True, key=f"t2_cargos_series_{cargo_escolhido}")
+            st.plotly_chart(style_fig(fig_series, height=520), width='stretch', key=f"t2_cargos_series_{cargo_escolhido}")
         else:
             st.info("Sem dados para a série.")
     else:
@@ -808,7 +777,7 @@ with tab3:
             fig_comp = px.bar(top_comp, x=[inscritos_col, certificados_col], y='SECRETARIA/ÓRGÃO',
                               orientation='h', barmode='group', text_auto=True, title=None)
             fig_comp.update_traces(textposition="outside", cliponaxis=False, textfont_size=12)
-            st.plotly_chart(style_fig(fig_comp), use_container_width=True, key=f"sec_comp_{topn}")
+            st.plotly_chart(style_fig(fig_comp), width='stretch', key=f"sec_comp_{topn}")
 
     with cB:
         top_taxa = grp[grp[inscritos_col] > 0].sort_values('Taxa de Certificação (%)', ascending=False).head(topn)
@@ -821,7 +790,7 @@ with tab3:
                               text='Taxa de Certificação (%)')
             fig_taxa.update_traces(texttemplate='%{text:.0f}%', textposition='outside', cliponaxis=False, textfont_size=12)
             fig_taxa.update_xaxes(ticksuffix="%")
-            st.plotly_chart(style_fig(fig_taxa), use_container_width=True, key=f"sec_taxa_top_{topn}")
+            st.plotly_chart(style_fig(fig_taxa), width='stretch', key=f"sec_taxa_top_{topn}")
 
     st.markdown('<div class="panel"><h3>Participação no total de Inscritos</h3>', unsafe_allow_html=True)
     grp_tree = grp.sort_values(inscritos_col, ascending=False).head(max(topn*2, 20))
@@ -834,7 +803,7 @@ with tab3:
                              title='Treemap — maiores contribuições')
         treemap.update_traces(texttemplate="<b>%{label}</b><br>%{customdata[0]:.0f}%", textposition="middle center")
         treemap.update_layout(uniformtext_minsize=12, uniformtext_mode='show')
-        st.plotly_chart(style_fig(treemap, height=520), use_container_width=True, key="sec_tree")
+        st.plotly_chart(style_fig(treemap, height=520), width='stretch', key="sec_tree")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --------- Eventos
@@ -907,7 +876,7 @@ with tab4:
         # Exibir tabela de métricas
         st.dataframe(
             metricas_tipo,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             column_config={
                 "Tipo": st.column_config.TextColumn("Tipo de Evento", width="medium"),
@@ -968,7 +937,7 @@ with tab4:
             
             st.dataframe(
                 ev_display[cols_display],
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config=col_config,
                 height=400
@@ -991,7 +960,7 @@ with tab4:
             if not by_tipo.empty:
                 pie = px.pie(by_tipo.reset_index(), values=inscritos_col_ev, names="Tipo", hole=0.55)
                 pie.update_layout(legend=dict(orientation="v", y=0.5, yanchor="middle", x=1.02))
-                st.plotly_chart(style_fig(pie, height=460), use_container_width=True, key=f"ev_pie_{len(by_tipo)}")
+                st.plotly_chart(style_fig(pie, height=460), width='stretch', key=f"ev_pie_{len(by_tipo)}")
             else:
                 st.info("Sem dados para o donut.")
 
@@ -999,7 +968,7 @@ with tab4:
             if not ev.empty:
                 box = px.box(ev, x="Tipo", y="Taxa de Certificação (%)", title="Taxa de Certificação — distribuição por tipo")
                 box.update_yaxes(ticksuffix="%")
-                st.plotly_chart(style_fig(box, height=460), use_container_width=True, key="ev_box")
+                st.plotly_chart(style_fig(box, height=460), width='stretch', key="ev_box")
             else:
                 st.info("Sem dados para o boxplot.")
 
@@ -1016,7 +985,7 @@ with tab4:
                 bar_tipo.update_traces(texttemplate="%{y}", textposition="outside", cliponaxis=False)
                 maxy = max(1, by_tipo2["Total"].max())
                 bar_tipo.update_yaxes(range=[0, maxy * 1.15])
-                st.plotly_chart(style_fig(bar_tipo, height=420), use_container_width=True, key="ev_bar_tipo")
+                st.plotly_chart(style_fig(bar_tipo, height=420), width='stretch', key="ev_bar_tipo")
             st.markdown('</div>', unsafe_allow_html=True)
 
         if not ev.empty:
@@ -1050,7 +1019,7 @@ with tab4:
                         textposition="middle center",
                         hovertemplate="<b>%{label}</b><br>Inscritos: %{value}<br>Participação: %{percentRoot:.1%}<extra></extra>",
                     )
-                    st.plotly_chart(style_fig(tmap, height=520), use_container_width=True, key="ev_treemap_labels_pct")
+                    st.plotly_chart(style_fig(tmap, height=520), width='stretch', key="ev_treemap_labels_pct")
                 with col_desc:
                     st.markdown("""
                     <div class="panel">
@@ -1107,7 +1076,7 @@ with tab5:
                     cliponaxis=False
                 )
                 fig_parceiros.update_xaxes(range=[0, x_max_p * 1.15])
-                st.plotly_chart(style_fig(fig_parceiros, height=460), use_container_width=True, key="parceiros_bar")
+                st.plotly_chart(style_fig(fig_parceiros, height=460), width='stretch', key="parceiros_bar")
             else:
                 st.info("Sem dados para exibir.")
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1131,7 +1100,7 @@ with tab5:
                     cliponaxis=False
                 )
                 fig_taxa_parceiros.update_xaxes(ticksuffix="%", range=[0, 105])
-                st.plotly_chart(style_fig(fig_taxa_parceiros, height=460), use_container_width=True, key="parceiros_taxa")
+                st.plotly_chart(style_fig(fig_taxa_parceiros, height=460), width='stretch', key="parceiros_taxa")
             else:
                 st.info("Sem dados para exibir.")
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1154,7 +1123,7 @@ with tab5:
                 textfont_size=10
             )
             treemap_parceiros.update_layout(height=500)
-            st.plotly_chart(style_fig(treemap_parceiros, height=500), use_container_width=True, key="parceiros_treemap")
+            st.plotly_chart(style_fig(treemap_parceiros, height=500), width='stretch', key="parceiros_treemap")
         else:
             st.info("Sem dados para o treemap.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -1167,7 +1136,7 @@ with tab5:
             df_display_parceiros = df_display_parceiros.sort_values('n_inscritos', ascending=False)
             st.dataframe(
                 df_display_parceiros,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     "orgao_parceiro": st.column_config.TextColumn("Órgão Parceiro", width="large"),
@@ -1204,7 +1173,7 @@ with tab5:
                                 title='Distribuição por Formato',
                                 hole=0.4
                             )
-                            st.plotly_chart(style_fig(fig_formato_parceiros, height=400), use_container_width=True, key="parceiros_formato")
+                            st.plotly_chart(style_fig(fig_formato_parceiros, height=400), width='stretch', key="parceiros_formato")
                 
                 with col_p4:
                     if 'eixo' in df_parceiros_detalhado.columns:
@@ -1217,7 +1186,7 @@ with tab5:
                                 title='Distribuição por Eixo',
                                 hole=0.4
                             )
-                            st.plotly_chart(style_fig(fig_eixo_parceiros, height=400), use_container_width=True, key="parceiros_eixo")
+                            st.plotly_chart(style_fig(fig_eixo_parceiros, height=400), width='stretch', key="parceiros_eixo")
         else:
             st.info("Dados detalhados de formato e eixo não disponíveis.")
         
