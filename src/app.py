@@ -102,7 +102,7 @@ def main():
     # ── Botões de navegação rápida ────────────────────────────────────────
     st.markdown("### 🧭 Navegação Rápida")
 
-    nav1, nav2 = st.columns(2)
+    nav1, nav2, nav3 = st.columns(3)
 
     with nav1:
         if st.button(
@@ -121,6 +121,15 @@ def main():
             key="btn_evolucao",
         ):
             st.switch_page("pages/5_📈_Evolução_Temporal.py")
+
+    with nav3:
+        if st.button(
+            "🤖 Assistente IA — Pergunte sobre os dados",
+            width='stretch',
+            type="primary",
+            key="btn_assistente",
+        ):
+            st.switch_page("pages/6_🤖_Assistente_IA.py")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
