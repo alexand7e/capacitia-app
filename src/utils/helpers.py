@@ -1,9 +1,12 @@
-"""Funções auxiliares para processamento de dados."""
+"""Funções auxiliares para processamento de dados e UI."""
 
+from pathlib import Path
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import unicodedata
 import re
+import streamlit as st
 
 def fmt_int_br(n: int) -> str:
     """Formata número inteiro no padrão brasileiro."""
@@ -57,6 +60,29 @@ def _find_header_row(df: pd.DataFrame) -> int:
         if "SECRETARIA/ÓRGÃO" in row_txt and "INSCRITOS" in row_txt:
             return i
     return 0
+
+def style_fig(fig, height=420):
+    fig.update_layout(
+        height=height, margin=dict(l=10, r=10, t=50, b=10),
+        xaxis_title=None, yaxis_title=None,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0)
+    )
+    return fig
+
+
+def render_back_button(key="btn_home"):
+    if st.button("🏠 Voltar à Home", key=key, width='stretch'):
+        st.switch_page("app.py")
+
+
+def render_update_timestamp(color="#7780a1"):
+    st.markdown(
+        f'<p style="color:{color}; font-size:0.85rem;">'
+        f'Atualizado em {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}'
+        f"</p>",
+        unsafe_allow_html=True,
+    )
+
 
 def clean_secretarias(df_secretarias_raw: pd.DataFrame) -> pd.DataFrame:
     """Limpa e padroniza DataFrame de secretarias."""

@@ -4,10 +4,9 @@ import streamlit as st
 import sys
 from pathlib import Path
 
-# Adicionar o diretório raiz ao path para imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.utils.constants import MODULES, COLORS
+from utils.constants import MODULES, COLORS
 
 def render_module_card(module_key: str, kpis: dict = None):
     """Renderiza um card de módulo estilizado."""
@@ -132,7 +131,7 @@ def render_module_card(module_key: str, kpis: dict = None):
     
     # Botão de navegação
     button_text = f"🔍 Explorar {module['name']}"
-    if st.button(button_text, key=f"btn_{module_key}", use_container_width=True):
+    if st.button(button_text, key=f"btn_{module_key}", width='stretch'):
         try:
             st.switch_page(f"pages/{module['page']}.py")
         except Exception as e:

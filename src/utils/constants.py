@@ -1,15 +1,15 @@
 """Constantes e configurações do CapacitIA."""
 
-# Cores do tema (mantendo as cores atuais do CapacitIA Servidores)
+# Cores do tema SIA (Secretaria de Inteligência Artificial do Piauí)
 COLORS = {
-    'background': '#11142a',
-    'panel': '#11142a',
-    'muted': '#7780a1',
-    'text': '#e6e7ee',
-    'primary': '#7DD3FC',  # Azul claro
-    'secondary': '#34D399',  # Verde
-    'border': '#1e2443',
-    'bg': '#0f1220',
+    'background': '#FFFFFF',
+    'panel': '#F2F2F2',
+    'muted': '#9e9e9e',
+    'text': '#313131',
+    'primary': '#034EA2',
+    'secondary': '#FDB913',
+    'border': '#D8D8D8',
+    'bg': '#FFFFFF',
 }
 
 # Informações dos módulos

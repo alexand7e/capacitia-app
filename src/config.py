@@ -67,3 +67,19 @@ def canonical_cargo(value: str) -> str:
 def canonical_vinculo(value: str) -> str:
     key = _normalize(value)
     return VINCULO_MAP.get(key, str(value).strip())
+
+
+ORGAOS_EXTERNOS = {
+    "MPPI", "MP-PI", "MPE-PI", "PRF",
+    "CÂMARA MUNICIPAL DE TERESINA", "CAMARA MUNICIPAL DE TERESINA",
+    "CMT",
+    "DETRAN", "DETRAN-PI", "DETRAN/PI",
+    "TRE", "TRF", "TRT",
+    "POLÍCIA FEDERAL", "POLICIA FEDERAL",
+    "IBAMA", "INCRA",
+    "PREFEITURA", "PREFEITURA DE TERESINA",
+    "MJSP", "MINISÉRIA DA JUSTIÇA E SEGURANÇA PÚBLICA",
+}
+
+
+STREAMLIT_CONFIG = {"layout": "wide", "initial_sidebar_state": "collapsed"}
