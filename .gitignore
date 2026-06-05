@@ -64,6 +64,7 @@ venv.bak/
 docs/
 .data/raw/*.xlsx
 .data/raw/*.xls
+.data/chat/
 *.tmp
 *.temp
 .DS_Store

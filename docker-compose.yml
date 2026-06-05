@@ -1,8 +1,9 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+    image: ghcr.io/alexand7e/capacitia:june-05
     container_name: capacitia-app
     restart: unless-stopped
     ports:
@@ -13,6 +14,7 @@ services:
       - TZ=America/Fortaleza
     volumes:
       - ./.data/chroma:/app/.data/chroma
+      - ./.data/chat:/app/.data/chat
       - ./.data/processed:/app/.data/processed
       - ./.data/raw:/app/.data/raw
     healthcheck:
